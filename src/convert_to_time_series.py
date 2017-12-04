@@ -8,7 +8,7 @@ class TimeSeriesData(object):
      - input_file: (string) path to csv source file
 
     METHODS:
-     - construct(): run after initialization to construct time-series dataframe
+     - construct_tables(): run after initialization to construct time-series dataframe
          and other class attributes
 
     ATTRIBUTES:
@@ -84,10 +84,12 @@ class TimeSeriesData(object):
         # dates_idx = self._date_idx
         A = self.by_inv_id['first_rtl_sale'].as_matrix()
         B = self.by_inv_id['latest_rtl_sale'].as_matrix()
-        first_rtl_sales, date_range = np.meshgrid(A, self._date_idx)
-        lastsale_dates, date_range = np.meshgrid(B, self._date_idx)
-        bool_A = date_range >= first_rtl_sales
-        bool_B = date_range <= lastsale_dates
+        date_tiled = np.broadcast_to(
+                        np.array(self._date_idx).reshape(len(self._date_idx), 1),
+                        (len(self._date_idx), len(self.by_inv_id.index))
+                        )
+        bool_A = date_tiled >= A
+        bool_B = date_tiled <= B
         matrix_data = bool_A * bool_B
 
         self._bool_matrix = pd.DataFrame(matrix_data)
