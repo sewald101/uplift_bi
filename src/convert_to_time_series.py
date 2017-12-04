@@ -43,19 +43,25 @@ class TimeSeriesData(object):
         self.by_inv_id = self.raw_df.copy()
         self.by_inv_id['days_sales'] = (
             self.by_inv_id['latest_rtl_sale'] - self.by_inv_id['first_rtl_sale']
-            )###.astype(int)
-        ###self.by_inv_id[self.by_inv_id['days_sales'] == 0] = 1
-        # Prevents division by zero for daily average calculations
+            )
+        # Reassign days_sales timedelta zeros to ones for division in calculating
+        # daily averages
+        x = '1 days'
+        self.by_inv_id.loc[
+            self.by_inv_id['days_sales'].apply(lambda x: x.days) == 0,
+            'days_sales'
+            ] = pd.to_timedelta(x)
+
         self.by_inv_id['gross_profit'] = (
             self.by_inv_id['ttl_rtl_sales'] - self.by_inv_id['wholesale_cogs']
             )
         self.by_inv_id['avg_daily_sales'] = (
             self.by_inv_id['ttl_rtl_sales'] /
-            self.by_inv_id['days_sales'].apply(lambda x: float(x.days))
+            self.by_inv_id['days_sales'].apply(lambda x: x.days)
             )
         self.by_inv_id['avg_daily_gross'] = (
             self.by_inv_id['gross_profit'] /
-            self.by_inv_id['days_sales'].apply(lambda x: float(x.days))
+            self.by_inv_id['days_sales'].apply(lambda x: x.days)
             )
         cols = ['wa_inventory_id', 'generic_strain_id', 'first_rtl_sale',
                 'latest_rtl_sale', 'days_sales', 'wholesale_cogs',
