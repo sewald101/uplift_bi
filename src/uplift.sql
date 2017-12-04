@@ -19,8 +19,6 @@ WHERE generic_strain_id = 18
 AND retail_location_id IS NOT NULL /* FILTER FOR RETAIL TRANSACTIONS */
 AND first_retail_sale_at IS NOT NULL /* FILTER  FOR PRESENCE OF FIRST SALE DATE*/
 AND most_recent_retail_sale_at IS NOT NULL /* DITTO FOR LATEST SALE DATE*/
-AND most_recent_retail_sale_at > first_retail_sale_at /* FILTER FOR RECORDS
-WITH AT LEAST ONE DAY OF SALES*/
 ORDER BY seller_transfer_date
 );
 
@@ -71,7 +69,7 @@ SELECT ps.wa_inventory_id
 FROM product_skus ps
 JOIN locations l
 ON ps.seller_location_id = l.id
-WHERE ps.wa_inventory_id = 6033521730002228;
+WHERE ps.wa_inventory_id = 6033240110000277;
 /*
 OR ps.wa_inventory_id = 6033240110000315
 OR ps.wa_inventory_id = 6033240110000330
