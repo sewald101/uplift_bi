@@ -81,7 +81,6 @@ class TimeSeriesData(object):
 
     def _construct_bool_matrix(self):
         """Construct boolean transformation matrix on: date IN date range per inventory id"""
-        # dates_idx = self._date_idx
         A = self.by_inv_id['first_rtl_sale'].as_matrix()
         B = self.by_inv_id['latest_rtl_sale'].as_matrix()
         date_tiled = np.broadcast_to(
