@@ -29,7 +29,7 @@ class TimeSeriesData(object):
         self._sales_matrix = None
 
 
-    def construct(self):
+    def construct_tables(self):
         """Run to construct all public attribute dataframes"""
         self._construct_by_inv_id()
         self._construct_date_idx()
@@ -41,23 +41,25 @@ class TimeSeriesData(object):
     def _construct_by_inv_id(self):
         """Construct by_inv_id dataframe from raw_df"""
         self.by_inv_id = self.raw_df.copy()
-        self.by_inv_id['days_inventory'] = (
-            self.by_inv_id['latest_rtl_sale'] - self.by_inv_id['wholesale_date']
-            )
+        self.by_inv_id['days_sales'] = (
+            self.by_inv_id['latest_rtl_sale'] - self.by_inv_id['first_rtl_sale']
+            )###.astype(int)
+        ###self.by_inv_id[self.by_inv_id['days_sales'] == 0] = 1
+        # Prevents division by zero for daily average calculations
         self.by_inv_id['gross_profit'] = (
-            self.by_inv_id['ttl_retail_sales'] - self.by_inv_id['wholesale_cogs']
+            self.by_inv_id['ttl_rtl_sales'] - self.by_inv_id['wholesale_cogs']
             )
         self.by_inv_id['avg_daily_sales'] = (
-            self.by_inv_id['ttl_retail_sales'] /
-            self.by_inv_id['days_inventory'].apply(lambda x: float(x.days))
+            self.by_inv_id['ttl_rtl_sales'] /
+            self.by_inv_id['days_sales'].apply(lambda x: float(x.days))
             )
         self.by_inv_id['avg_daily_gross'] = (
             self.by_inv_id['gross_profit'] /
-            self.by_inv_id['days_inventory'].apply(lambda x: float(x.days))
+            self.by_inv_id['days_sales'].apply(lambda x: float(x.days))
             )
-        cols = ['wa_inventory_id', 'generic_strain_id', 'wholesale_date',
-                'latest_rtl_sale', 'days_inventory', 'wholesale_cogs',
-                'ttl_retail_sales', 'gross_profit', 'avg_daily_sales',
+        cols = ['wa_inventory_id', 'generic_strain_id', 'first_rtl_sale',
+                'latest_rtl_sale', 'days_sales', 'wholesale_cogs',
+                'ttl_rtl_sales', 'gross_profit', 'avg_daily_sales',
                 'avg_daily_gross', 'units_sold'
                 ]
         self.by_inv_id = self.by_inv_id[cols]
@@ -66,31 +68,33 @@ class TimeSeriesData(object):
     def _construct_date_idx(self):
         """Construct index of consecutive dates from by_inv_id dataframe"""
         self._date_idx = pd.date_range(
-            self.by_inv_id['wholesale_date'].min(),
+            self.by_inv_id['first_rtl_sale'].min(),
             self.by_inv_id['latest_rtl_sale'].max()
         )
 
 
     def _construct_bool_matrix(self):
         """Construct boolean transformation matrix on: date IN date range per inventory id"""
-        dates_idx = self._date_idx
-        A = self.by_inv_id['wholesale_date'].as_matrix()
+        # dates_idx = self._date_idx
+        A = self.by_inv_id['first_rtl_sale'].as_matrix()
         B = self.by_inv_id['latest_rtl_sale'].as_matrix()
-        wholesale_dates, date_range = np.meshgrid(A, dates_idx)
-        lastsale_dates, date_range = np.meshgrid(B, dates_idx)
-        bool_A = date_range >= wholesale_dates
+        first_rtl_sales, date_range = np.meshgrid(A, self._date_idx)
+        lastsale_dates, date_range = np.meshgrid(B, self._date_idx)
+        bool_A = date_range >= first_rtl_sales
         bool_B = date_range <= lastsale_dates
         matrix_data = bool_A * bool_B
 
         self._bool_matrix = pd.DataFrame(matrix_data)
 
+
     def _construct_sales_matrix(self):
         """Construct matrix of avg daily sales and margin by inventory_id,
         to be dot-multiplied with _bool_matrix"""
         cols = ['avg_daily_sales', 'avg_daily_gross']
-        self._sales_matrix = self.by_inv_id[cols].values.reshape(
-            len(self.by_inv_id['wa_inventory_id']), 2
-            )
+        self._sales_matrix = pd.DataFrame(
+            self.by_inv_id[cols].values.reshape(
+                               len(self.by_inv_id['wa_inventory_id']), 2
+                               ))
 
 
     def _construct_time_series(self):

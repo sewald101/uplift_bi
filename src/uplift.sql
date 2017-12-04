@@ -9,14 +9,18 @@ DELIMITER ',' CSV HEADER;
 CREATE TABLE lemon_haze_18 AS (
 SELECT wa_inventory_id
  , generic_strain_id
- , CAST(seller_transfer_date AS DATE) AS wholesale_date
+ , CAST(first_retail_sale_at AS DATE) AS first_rtl_sale
  , CAST(most_recent_retail_sale_at AS DATE) AS latest_rtl_sale
  , seller_price AS wholesale_COGS
- , ROUND(total_retail_sales_amount, 2) AS ttl_retail_sales
+ , ROUND(total_retail_sales_amount, 2) AS ttl_rtl_sales
  , CAST(total_retail_sales_units AS INTEGER) AS units_sold
 FROM product_skus
 WHERE generic_strain_id = 18
 AND retail_location_id IS NOT NULL /* FILTER FOR RETAIL TRANSACTIONS */
+AND first_retail_sale_at IS NOT NULL /* FILTER  FOR PRESENCE OF FIRST SALE DATE*/
+AND most_recent_retail_sale_at IS NOT NULL /* DITTO FOR LATEST SALE DATE*/
+AND most_recent_retail_sale_at > first_retail_sale_at /* FILTER FOR RECORDS
+WITH AT LEAST ONE DAY OF SALES*/
 ORDER BY seller_transfer_date
 );
 
@@ -28,6 +32,8 @@ SELECT generic_strain_id
  , COUNT(wa_inventory_id) AS num_inv_ids
 FROM product_skus
 WHERE retail_location_id IS NOT NULL /*FILTER FOR RETAIL TRANSACTIONS */
+AND seller_transfer_date IS NOT NULL /*FILTER FOR PRESENCE OF WHOLESALE DATE*/
+AND most_recent_retail_sale_at IS NOT NULL /*DITTO FOR LATEST RETAIL SALE DATE*/
 AND generic_strain_id BETWEEN 10 AND 30
 GROUP BY generic_strain_id
 ORDER BY generic_strain_id
@@ -65,14 +71,15 @@ SELECT ps.wa_inventory_id
 FROM product_skus ps
 JOIN locations l
 ON ps.seller_location_id = l.id
-WHERE ps.wa_inventory_id = 6033240110000316
+WHERE ps.wa_inventory_id = 6033521730002228;
+/*
 OR ps.wa_inventory_id = 6033240110000315
 OR ps.wa_inventory_id = 6033240110000330
 OR ps.wa_inventory_id = 6033240110000456
 OR ps.wa_inventory_id = 6033240110000313
 OR ps.wa_inventory_id = 6033240110000309
-OR ps.wa_inventory_id = 6033240110000312
-;
+OR ps.wa_inventory_id = 6033240110000312  */
+
 
 
 /* IDs FOR SAMPLING RECORDS VIA QUERY ABOVE*/
