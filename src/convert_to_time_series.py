@@ -12,8 +12,12 @@ class TimeSeriesData(object):
          and other class attributes
 
     ATTRIBUTES:
-     - time_series: dataframe containing daily total sales and gross profits
+     - time_series: DataFrame containing daily total sales and gross profits
          for generic strain over total time span of available inventory_id records
+     - sales_daily: Pandas Series
+     - sales_weekly: Pandas Series, by Monday-week
+     - gross_daily: Pandas Series
+     - gross_weekly: Pandas Series, by Monday-week
      - by_inv_id: dataframe recording dates and statistics by inventory_id record
      - raw_df: input_file converted to dataframe
     """
@@ -24,6 +28,10 @@ class TimeSeriesData(object):
         self.raw_df = pd.read_csv(self.input_file, parse_dates=[2, 3])
         self.by_inv_id = None
         self.time_series = None
+        self.sales_daily = None
+        self.sales_weekly = None
+        self.gross_daily = None
+        self.gross_weekly = None
         self._date_idx = None
         self._bool_matrix = None
         self._sales_matrix = None
@@ -109,3 +117,27 @@ class TimeSeriesData(object):
         self.time_series = self._bool_matrix.dot(self._sales_matrix)
         self.time_series.columns = cols
         self.time_series.index = self._date_idx
+
+        self.sales_daily = pd.Series(self.time_series['ttl_sales'],
+                                    index=self._date_idx)
+        self.sales_weekly = self.sales_daily.resample('W-MON').sum()
+        self.gross_daily = pd.Series(self.time_series['ttl_gross_profit'],
+                                    index=self._date_idx)
+        self.gross_weekly = self.gross_daily.resample('W-MON').sum()
+
+
+if __name__=='__main__':
+    path = '../data/lemon_haze_18.csv'
+
+    lemon_haze = TimeSeriesData(path)
+    lemon_haze.construct_tables()
+
+    raw = lemon_haze.raw_df
+    inv = lemon_haze.by_inv_id
+    ts = lemon_haze.time_series
+    sales_dy = lemon_haze.sales_daily
+    sales_wk = lemon_haze.sales_weekly
+    gross_dy = lemon_haze.gross_daily
+    gross_wk = lemon_haze.gross_weekly
+
+    print(ts.info())
