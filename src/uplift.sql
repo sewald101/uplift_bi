@@ -1,14 +1,15 @@
 
 /* DAILY SALES for STRAIN */
-SELECT CAST(DATE_TRUNC('day', date_of_sale) AS DATE) as date
- , SUM(retail_price) as ttl_sales
- , SUM(retail_units) as ttl_units_sold
-FROM daily_retail_sales
-WHERE strain_name LIKE '%Girl Scout%'
-GROUP BY date
-ORDER BY date
-LIMIT 10;
-
+SELECT CAST(DATE_TRUNC('day', ds.date_of_sale) AS DATE) as date
+ , st.generic_strain_id as strain_id
+ , ROUND(SUM(ds.retail_price)) as ttl_sales
+ , ROUND(SUM(ds.retail_units)) as ttl_units_sold
+FROM daily_retail_sales ds
+JOIN strains st
+ON ds.strain_name = st.strain_display_name
+WHERE st.generic_strain_id = 3
+GROUP BY date, strain_id
+ORDER BY date;
 
 
 /* COPY lemon_haze_18 TABLE to CSV */
@@ -35,16 +36,17 @@ ORDER BY seller_transfer_date
 );
 
 
-/* STRAIN ID, NAME, COUNT OF PRODUCTS, COUNT OF RETAIL RECORDS
-For selection of individual strains as case studies*/
+/* CREATE strains TABLE: STRAIN ID, NAME, COUNT OF PRODUCTS, COUNT OF RETAIL RECORDS
+Filters for retail only commented out */
+CREATE TABLE strains AS (
 WITH retail_inv_ids AS (
 SELECT generic_strain_id
  , COUNT(wa_inventory_id) AS num_inv_ids
 FROM product_skus
-WHERE retail_location_id IS NOT NULL /*FILTER FOR RETAIL TRANSACTIONS */
-AND seller_transfer_date IS NOT NULL /*FILTER FOR PRESENCE OF WHOLESALE DATE*/
-AND most_recent_retail_sale_at IS NOT NULL /*DITTO FOR LATEST RETAIL SALE DATE*/
-AND generic_strain_id BETWEEN 1 AND 20
+--WHERE retail_location_id IS NOT NULL /*FILTER FOR RETAIL TRANSACTIONS */
+--AND seller_transfer_date IS NOT NULL /*FILTER FOR PRESENCE OF WHOLESALE DATE*/
+--AND most_recent_retail_sale_at IS NOT NULL /*DITTO FOR LATEST RETAIL SALE DATE*/
+--AND generic_strain_id BETWEEN 1 AND 20
 GROUP BY generic_strain_id
 ORDER BY generic_strain_id
 )
@@ -56,11 +58,12 @@ SELECT ps.generic_strain_id
 FROM product_skus ps
 JOIN retail_inv_ids ri
 ON ps.generic_strain_id = ri.generic_strain_id
-WHERE ps.generic_strain_id BETWEEN 1 AND 20
+--WHERE ps.generic_strain_id BETWEEN 1 AND 20
 GROUP BY ps.generic_strain_id
  , ps.strain_display_name
  , ri.num_inv_ids
-ORDER BY ps.generic_strain_id;
+ORDER BY ps.generic_strain_id
+);
 
 
 /* SINGLE SALES RECORD BY INVENTORY ID(s)*/
