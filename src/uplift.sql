@@ -1,12 +1,12 @@
 
 /* COPY lemon_haze_18 TABLE to CSV */
-COPY lemon_haze_18
-TO '/data/uplift/Data/lemon_haze_18.csv'
+COPY id0017_blue_cheese
+TO '/data/uplift/Data/strain_data/0017_blue_cheese.csv'
 DELIMITER ',' CSV HEADER;
 
 
 /* PROTOTYPE RAW DATA TABLE FOR SINGLE STRAIN (18, LEMON HAZE) */
-CREATE TABLE lemon_haze_18 AS (
+CREATE TABLE id0017_blue_cheese AS (
 SELECT wa_inventory_id
  , generic_strain_id
  , CAST(first_retail_sale_at AS DATE) AS first_rtl_sale
@@ -15,7 +15,7 @@ SELECT wa_inventory_id
  , ROUND(total_retail_sales_amount, 2) AS ttl_rtl_sales
  , CAST(total_retail_sales_units AS INTEGER) AS units_sold
 FROM product_skus
-WHERE generic_strain_id = 18
+WHERE generic_strain_id = 17
 AND retail_location_id IS NOT NULL /* FILTER FOR RETAIL TRANSACTIONS */
 AND first_retail_sale_at IS NOT NULL /* FILTER  FOR PRESENCE OF FIRST SALE DATE*/
 AND most_recent_retail_sale_at IS NOT NULL /* DITTO FOR LATEST SALE DATE*/
@@ -32,7 +32,7 @@ FROM product_skus
 WHERE retail_location_id IS NOT NULL /*FILTER FOR RETAIL TRANSACTIONS */
 AND seller_transfer_date IS NOT NULL /*FILTER FOR PRESENCE OF WHOLESALE DATE*/
 AND most_recent_retail_sale_at IS NOT NULL /*DITTO FOR LATEST RETAIL SALE DATE*/
-AND generic_strain_id BETWEEN 10 AND 30
+AND generic_strain_id BETWEEN 1 AND 20
 GROUP BY generic_strain_id
 ORDER BY generic_strain_id
 )
@@ -44,7 +44,7 @@ SELECT ps.generic_strain_id
 FROM product_skus ps
 JOIN retail_inv_ids ri
 ON ps.generic_strain_id = ri.generic_strain_id
-WHERE ps.generic_strain_id BETWEEN 10 AND 30
+WHERE ps.generic_strain_id BETWEEN 1 AND 20
 GROUP BY ps.generic_strain_id
  , ps.strain_display_name
  , ri.num_inv_ids
@@ -105,6 +105,24 @@ SELECT strain_display_name
 FROM product_skus
 WHERE strain_display_name LIKE '%Purple Gorilla%'
 GROUP BY strain_display_name;
+
+/*Max's query for Daily Sales by Retailer and Strain*/
+SET TIME ZONE '-08';
+SELECT
+    date_trunc('day', d.sessiontime)       AS date_retail_sales
+    , d.location                           AS retailer
+    , p.strain_display_name                AS strain
+    , SUM(price)                           AS retail_price
+    , SUM(weight)                           AS retail_units
+FROM biotrackthc_dispensing AS d
+JOIN products AS p ON p.wa_inventory_id = d.inventoryid
+WHERE (d.deleted = 0)
+    --AND (d.refunded = 0)
+    AND (p.generic_strain_id < 10)
+    AND d.sessiontime > '01-01-2016'
+GROUP BY date_retail_sales
+        , retailer
+        , strain
 
 
 /* CREATE TABLE FOR product_skus */
