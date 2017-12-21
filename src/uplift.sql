@@ -1,4 +1,16 @@
 
+/* DAILY SALES for STRAIN */
+SELECT CAST(DATE_TRUNC('day', date_of_sale) AS DATE) as date
+ , SUM(retail_price) as ttl_sales
+ , SUM(retail_units) as ttl_units_sold
+FROM daily_retail_sales
+WHERE strain_name LIKE '%Girl Scout%'
+GROUP BY date
+ORDER BY date
+LIMIT 10;
+
+
+
 /* COPY lemon_haze_18 TABLE to CSV */
 COPY id0017_blue_cheese
 TO '/data/uplift/Data/strain_data/0017_blue_cheese.csv'
@@ -123,6 +135,21 @@ WHERE (d.deleted = 0)
 GROUP BY date_retail_sales
         , retailer
         , strain
+
+/* CREATE TABLE FOR daily_sales*/
+CREATE TABLE daily_retail_sales (
+  record INTEGER,
+  date_of_sale TIMESTAMP,
+  retailer_id INTEGER,
+  strain_name VARCHAR,
+  retail_price NUMERIC(15,2),
+  retail_units NUMERIC(15,4)
+);
+
+/* COPY DATA INTO daily_retail_sales TABLE */
+COPY daily_retail_sales
+FROM '/data/uplift/Data/TopRetailStrains.csv'
+DELIMITER ',' CSV HEADER;
 
 
 /* CREATE TABLE FOR product_skus */
