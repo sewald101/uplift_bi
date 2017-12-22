@@ -11,7 +11,7 @@ class StrainSalesDF(object):
     """
     Initialize with strain_id (int)
     Run public method construct_df()
-    Returns pandas dataframe for strain as attribute strain_df
+    Returns pandas dataframe for strain as attribute: strain_df
     """
 
     def __init__(self, strain_id):
@@ -50,7 +50,7 @@ class StrainSalesDF(object):
                                             'ttl_sales',
                                             'ttl_units_sold']
                                             ])
-        self.strain_df.index = raw_df['date']
+        self.strain_df.index = pd.DatetimeIndex(raw_df['date'])
 
 
 
