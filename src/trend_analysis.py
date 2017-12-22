@@ -1,17 +1,30 @@
+"""
+Utilities for trend analysis
+
+CLASSES:
+ -- StrainSalesDF(strain_id)
+
+FUNCTIONS
+ -- compute_rolling_avg(df, window_wks, data_col='ttl_sales')
+ -- slice_timeseries(data, period_wks, end_date=None)
+ -- trend_AUC(data, normalize=False, normed_Series=False)
+
+"""
+
 import numpy as np
 from numpy import trapz
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 from sqlalchemy import create_engine
-import psycopg2 as ps2
 
 
 class StrainSalesDF(object):
     """
     Initialize with strain_id (int)
     Run public method construct_df()
-    Returns pandas dataframe for strain as attribute: strain_df
+    Constructs pandas time series (dataframe) with sales in dollars and units
+       as attribute: StrainSalesDF.strain_df
     """
 
     def __init__(self, strain_id):
@@ -53,6 +66,50 @@ class StrainSalesDF(object):
         self.strain_df.index = pd.DatetimeIndex(raw_df['date'])
 
 
+
+def compute_rolling_avg(df, window_wks, data_col='ttl_sales'):
+    """
+    INPUT: StrainSales.strain_df object
+    Enter boxcar window in number of weeks
+    Optional: enter 'ttl_units_sold' for rolling average on units
+    OUTPUT: Returns pandas.Series with rolling average values"""
+    boxcar = window_wks * 7
+    return df[data_col].rolling(window=boxcar).mean()
+
+
+def slice_timeseries(data, period_wks, end_date=None):
+    """Enter period in weeks and an optional end_date str ('07/31/2017')
+    Returns sliced Series
+    """
+    days = period_wks * 7
+    if end_date:
+        return data[end_date - days:end_date]
+    else:
+        return data[-days:]
+
+
+def trend_AUC(data, normalize=False, normed_Series=False):
+    """
+    INPUT: trend data in time series (pandas.Series)
+    OUTPUT: area under curve (AUC) for shifted, or shifted and normed, trend data
+            optionally, normed trend data in time series for further analysis
+    NOTE: All data shifted such that value at t0 = 0
+    """
+    if normalize:
+        values = data.values
+        values = values.reshape(-1,1)
+        scaler = MinMaxScaler(feature_range=(-1,1))
+        scaler = scaler.fit(values)
+        normed_trend = scaler.transform(values).flatten()
+        normed_trend = pd.Series(normed_trend - normed_trend[0], index=data.index)
+        if normed_Series:
+            return normed_trend
+        else:
+            return np.trapz(normed_trend.values)
+    else:
+        values = data.values
+        values = values - values[0]
+        return np.trapz(values)
 
 
 
