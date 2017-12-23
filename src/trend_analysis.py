@@ -8,11 +8,11 @@ FUNCTIONS
  -- compute_rolling_avg(df, window_wks, data_col='ttl_sales')
  -- slice_timeseries(data, period_wks, end_date=None)
  -- trend_AUC(data, normalize=False, normed_Series=False)
+ -- add_rolling_avg_col(df, window_wks, data_col='ttl_sales')
 
 """
 
 import numpy as np
-from numpy import trapz
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
@@ -69,31 +69,34 @@ class StrainSalesDF(object):
 
 def compute_rolling_avg(df, window_wks, data_col='ttl_sales'):
     """
-    INPUT: StrainSales.strain_df object
-    Enter boxcar window in number of weeks
-    Optional: enter 'ttl_units_sold' for rolling average on units
-    OUTPUT: Returns pandas.Series with rolling average values"""
+    INPUT: StrainSales.strain_df object (pandas DataFrame)
+     -- Enter boxcar window in number of weeks
+     -- Optional: enter 'ttl_units_sold' for rolling average on units
+    OUTPUT: Returns pandas Series with rolling average values"""
     boxcar = window_wks * 7
     return df[data_col].rolling(window=boxcar).mean()
 
 
-def slice_timeseries(data, period_wks, end_date=None):
+def slice_timeseries(ts, period_wks, end_date=None):
     """Enter period in weeks and an optional end_date str ('07/31/2017')
     Returns sliced Series
     """
     days = period_wks * 7
     if end_date:
-        return data[end_date - days:end_date]
+        return ts[end_date - days:end_date]
     else:
-        return data[-days:]
+        return ts[-days:]
 
 
 def trend_AUC(data, normalize=False, normed_Series=False):
     """
     INPUT: trend data in time series (pandas.Series)
-    OUTPUT: area under curve (AUC) for shifted, or shifted and normed, trend data
-            optionally, normed trend data in time series for further analysis
-    NOTE: All data shifted such that value at t0 = 0
+    OUTPUT:
+     -- default: area under curve (AUC) for shifted trend data
+     -- normalize=True, normed_Series=False: AUC for normed then shifted trend data
+     -- normalize=True, normed_Series=True: pandas Series for normed then shifted data
+    NOTE: Data shifted such that value at t0 = 0; as a consequence, some normed
+    values may exceed the feature range (-1, 1)
     """
     if normalize:
         values = data.values
@@ -114,12 +117,11 @@ def trend_AUC(data, normalize=False, normed_Series=False):
 
 
 
-
-
-
-
-
-
+def add_rolling_avg_col(df, window_wks, data_col='ttl_sales'):
+    """Add rolling average column to StrainSalesDF.strain_df object"""
+    boxcar = window_wks * 7
+    col = 'rolling_{}wk'.format(window_wks)
+    df[col] = df[data_col].rolling(window=boxcar).mean()
 
 
 if __name__=='__main__':
