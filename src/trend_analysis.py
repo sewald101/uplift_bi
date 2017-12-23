@@ -21,10 +21,11 @@ from sqlalchemy import create_engine
 
 class StrainSalesDF(object):
     """
-    Initialize with strain_id (int)
-    Run public method construct_df()
-    Constructs pandas time series (dataframe) with sales in dollars and units
-       as attribute: StrainSalesDF.strain_df
+    Initialize with strain_id (int) then run public method construct_df()
+    ATTRIBUTES:
+     -- strain_df: pandas time series (DataFrame) with daily sales in dollars and units
+     -- sales: pandas time series (Series) of total daily sales
+     -- units_sold: pandas time series (Series) of total daily units sold
     """
 
     def __init__(self, strain_id):
@@ -33,6 +34,8 @@ class StrainSalesDF(object):
         self._connection_str = 'postgresql:///uplift'
         self._conn = None
         self.strain_df = None
+        self.sales = None
+        self.units_sold = None
 
     def construct_df(self):
         self._query_strain_sales()
@@ -64,17 +67,16 @@ class StrainSalesDF(object):
                                             'ttl_units_sold']
                                             ])
         self.strain_df.index = pd.DatetimeIndex(raw_df['date'])
+        self.sales = self.strain_df['ttl_sales']
+        self.units_sold = self.strain_df['ttl_units_sold']
 
 
 
-def compute_rolling_avg(df, window_wks, data_col='ttl_sales'):
-    """
-    INPUT: StrainSales.strain_df object (pandas DataFrame)
-     -- Enter boxcar window in number of weeks
-     -- Optional: enter 'ttl_units_sold' for rolling average on units
-    OUTPUT: Returns pandas Series with rolling average values"""
+def compute_rolling_avg(ts, window_wks):
+    """INPUT: time series (Series) and moving window in weeks
+    OUTPUT: rolling average values"""
     boxcar = window_wks * 7
-    return df[data_col].rolling(window=boxcar).mean()
+    return ts.rolling(window=boxcar).mean()
 
 
 def slice_timeseries(ts, period_wks, end_date=None):
@@ -88,7 +90,7 @@ def slice_timeseries(ts, period_wks, end_date=None):
         return ts[-days:]
 
 
-def trend_AUC(data, normalize=False, normed_Series=False):
+def trend_AUC(ts, normalize=False, normed_Series=False):
     """
     INPUT: trend data in time series (pandas.Series)
     OUTPUT:
@@ -99,18 +101,18 @@ def trend_AUC(data, normalize=False, normed_Series=False):
     values may exceed the feature range (-1, 1)
     """
     if normalize:
-        values = data.values
+        values = ts.values
         values = values.reshape(-1,1)
         scaler = MinMaxScaler(feature_range=(-1,1))
         scaler = scaler.fit(values)
         normed_trend = scaler.transform(values).flatten()
-        normed_trend = pd.Series(normed_trend - normed_trend[0], index=data.index)
+        normed_trend = pd.Series(normed_trend - normed_trend[0], index=ts.index)
         if normed_Series:
             return normed_trend
         else:
             return np.trapz(normed_trend.values)
     else:
-        values = data.values
+        values = ts.values
         values = values - values[0]
         return np.trapz(values)
 
