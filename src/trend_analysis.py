@@ -7,7 +7,8 @@ CLASSES:
 FUNCTIONS
  -- compute_rolling_avg(df, window_wks, data_col='ttl_sales')
  -- slice_timeseries(data, period_wks, end_date=None)
- -- trend_AUC(data, normalize=False, normed_Series=False)
+ -- norm_Series(ts)
+ -- trend_AUC(ts, normalize=False)
  -- add_rolling_avg_col(df, window_wks, data_col='ttl_sales')
 
 """
@@ -21,15 +22,18 @@ from sqlalchemy import create_engine
 
 class StrainSalesDF(object):
     """
-    Initialize with strain_id (int) then run public method construct_df()
+    Initialize with strain_id (int) then run construct_df() method to populate
+    attributes
+
     ATTRIBUTES:
      -- strain_df: pandas time series (DataFrame) with daily sales in dollars and units
      -- sales: pandas time series (Series) of total daily sales
      -- units_sold: pandas time series (Series) of total daily units sold
      -- strain_id (int)
      -- strain_name (string)
+
     NOTE: DataFrame and Series titles with strain name and ID contained in
-    df.name and Series.name attibutes
+          df.name and Series.name attributes
     """
 
     def __init__(self, strain_id):
@@ -82,10 +86,16 @@ class StrainSalesDF(object):
 
 
 def compute_rolling_avg(ts, window_wks):
-    """INPUT: time series (Series) and moving window in weeks
-    OUTPUT: rolling average values"""
+    """
+    INPUT: complete time series (Series) and moving 'boxcar' window in weeks
+    OUTPUT: rolling average values
+    """
     boxcar = window_wks * 7
     return ts.rolling(window=boxcar).mean()
+
+def smooth_exponentially(ts, alpha):
+    """Apply exponential smoothing to sliced time series"""
+    pass
 
 
 def slice_timeseries(ts, period_wks, end_date=None):
@@ -98,41 +108,52 @@ def slice_timeseries(ts, period_wks, end_date=None):
     else:
         return ts[-days:]
 
+def norm_Series(ts):
+    """Returns time series normalized then shifted such that t0 = 0
+    NOTE: Due to shifting, some normed values may exceed the feature range (-1, 1)
+    """
+    values = ts.values
+    values = values.reshape(-1,1)
+    scaler = MinMaxScaler(feature_range=(-1,1))
+    scaler = scaler.fit(values)
+    normed_trend = scaler.transform(values).flatten()
+    normed_trend = pd.Series(normed_trend - normed_trend[0], index=ts.index)
+    normed_trend.name = ts.name + ' NORMED'
+    return normed_trend
 
-def trend_AUC(ts, normalize=False, normed_Series=False):
+def trend_AUC(ts, normalize=False):
     """
     INPUT: trend data in time series (pandas.Series)
     OUTPUT:
      -- default: area under curve (AUC) for shifted trend data
-     -- normalize=True, normed_Series=False: AUC for normed then shifted trend data
-     -- normalize=True, normed_Series=True: pandas Series for normed then shifted data
-    NOTE: Data shifted such that value at t0 = 0; as a consequence, some normed
-    values may exceed the feature range (-1, 1)
+     -- normalize=True: AUC for normed then shifted trend data
     """
     if normalize:
-        values = ts.values
-        values = values.reshape(-1,1)
-        scaler = MinMaxScaler(feature_range=(-1,1))
-        scaler = scaler.fit(values)
-        normed_trend = scaler.transform(values).flatten()
-        normed_trend = pd.Series(normed_trend - normed_trend[0], index=ts.index)
-        if normed_Series:
-            return normed_trend
-        else:
-            return np.trapz(normed_trend.values)
+        normed_trend = norm_Series(ts)
+        values = normed_trend.values
+        values = values - values[0]
+        return np.trapz(values)
+
     else:
         values = ts.values
         values = values - values[0]
         return np.trapz(values)
-
-
-
 
 def add_rolling_avg_col(df, window_wks, data_col='ttl_sales'):
     """Add rolling average column to StrainSalesDF.strain_df object"""
     boxcar = window_wks * 7
     col = 'rolling_{}wk'.format(window_wks)
     df[col] = df[data_col].rolling(window=boxcar).mean()
+
+def strain_trendsDF():
+    pass
+
+def strain_stats():
+    pass
+
+def strain_rankDF():
+    pass
+
 
 
 if __name__=='__main__':

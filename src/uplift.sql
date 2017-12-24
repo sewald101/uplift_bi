@@ -1,16 +1,16 @@
 
 /* DAILY SALES for STRAIN */
 SELECT CAST(DATE_TRUNC('day', ds.date_of_sale) AS DATE) as date
+ , st.strain_display_name as strain_name
  , st.generic_strain_id as strain_id
  , ROUND(SUM(ds.retail_price)) as ttl_sales
  , ROUND(SUM(ds.retail_units)) as ttl_units_sold
 FROM daily_retail_sales ds
 JOIN strains st
 ON ds.strain_name = st.strain_display_name
-WHERE st.generic_strain_id = 3
-GROUP BY date, strain_id
+WHERE st.generic_strain_id = 4
+GROUP BY date, st.strain_display_name, strain_id
 ORDER BY date;
-
 
 /* COPY lemon_haze_18 TABLE to CSV */
 COPY id0017_blue_cheese
