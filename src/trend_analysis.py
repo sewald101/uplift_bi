@@ -16,6 +16,7 @@ FUNCTIONS
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
+from collections import OrderedDict
 import matplotlib.pyplot as plt
 from sqlalchemy import create_engine
 
@@ -83,6 +84,99 @@ class StrainSalesDF(object):
 
         self.units_sold = self.strain_df['ttl_units_sold']
         self.units_sold.name = df_name + ' -- Daily Units Sold'
+
+
+
+class StrainTrendsDF(object):
+    """Convert raw time series sales or unit-sales data for a single strain into
+    engineered trend data, including rolling averages and exponentially smoothed
+    trends for both absolute and normalized values.
+
+    INPUT:
+     -- ts: StrainSalesDF.sales or .units_sold object, time series (pandas Series)
+     -- period_wks: date span in weeks reaching back from most recent datum,
+        used to define sampling period (int)
+     -- end_date: optional, date string (e.g., '07/15/2016') other than most recent
+        datum before which to extend sampling period (str, default=None)
+     -- RA_params: one or more rolling "boxcar" windows, in weeks, by which
+        to generate distinct columns of rolling average data (list of ints, default=None)
+     -- exp_smooth_params: one or more alpha smoothing factors (0 < alpha < 1)
+        by which to generate distinct columns of exponentially smoothed columns
+        (list of floats, default=None)
+     -- normed: (default = True) add a column for each rolling average or exp
+        smoothed column that computes on data rescaled (-1, 1) and then shifted
+        such that datum at t0 = 0.
+
+    ATTRIBUTES:
+     -- trendsDF: (pandas DataFrame)
+     -- trend_stats: (dict)
+    """
+
+    def __init__(self, ts, period_wks, end_date=None, RA_params=None,
+                    exp_smooth_params=None, normed=True):
+        self.ts = ts
+        self.period_wks = period_wks
+        self._period_days = period_wks * 7
+        self.end_date = end_date
+        self.RA_params = RA_params
+        self.exp_smooth_params = exp_smooth_params
+        self.normed = normed
+        self.strain_name = self.ts.name.split('(')[0].strip()
+        self.strain_ID = int(self.ts.name.split(')')[0].split(' ')[-1])
+        self.ts_sample = None
+        self.trendsDF = None
+        self.trend_stats = None # (OrderedDict)
+
+
+    def constuct_trendsDF(self):
+        """Main method"""
+        self._slice_timeseries()
+        sales_col_name = self.ts.name.split(' -- ')[-1].lower()
+        self.trendsDF = pd.DataFrame(data=self.ts_sample.values,
+                                    columns=[sales_col_name],
+                                    index=self.ts_sample.index
+                                    )
+        self.trendsDF.name = self._trendsDF_name()
+
+    def aggregate_stats(self):
+        """Construct trend_stats from trendsDF"""
+        self.trend_stats = OrderedDict({'strain_name': self.strain_name,
+                                        'strain_ID': self.strain_ID,
+                                        'ttl_sales': None
+                                        })
+
+    def _slice_timeseries(self):
+        """Construct ts_sample attribute"""
+        if self.end_date:
+            self.ts_sample = self.ts[self.end_date - self._period_days:self.end_date]
+        else:
+            self.ts_sample = self.ts[-self._period_days:]
+
+    def _trendsDF_name(self):
+        """Construct string for trendsDF pandas DataFrame name attribute"""
+        sales_or_units = self.ts.name.split(' -- ')[-1]
+        if not self.end_date:
+            ending = self.ts.index[-1].strftime('%m/%d/%Y')
+        else:
+            ending = self.end_date
+
+        DF_name = ('{} (ID: {}) Trends in {} over {} Weeks Ending {}').format(
+                                        self.strain_name,
+                                        self.strain_ID,
+                                        sales_or_units,
+                                        self.period_wks,
+                                        ending
+                                        )
+        return DF_name
+
+
+
+
+
+
+
+
+
 
 
 def compute_rolling_avg(ts, window_wks):
