@@ -165,6 +165,7 @@ class StrainTrendsDF(object):
 
     def aggregate_stats(self):
         """Construct trend_stats from trendsDF"""
+        # DEBUG THIS! object is not coming out in proper order; can't import to df
         self.trend_stats = OrderedDict({'strain_name': self.strain_name,
                                         'strain_ID': self.strain_ID,
                                         'ttl_sales': None
