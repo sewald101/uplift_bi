@@ -115,6 +115,7 @@ class StrainTrendsDF(object):
     def __init__(self, ts, period_wks, end_date=None, RA_params=None,
                     exp_smooth_params=None, normed=True):
         self.ts = ts
+        self.raw_df = None
         self.period_wks = period_wks
         self._period_days = period_wks * 7
         self.end_date = end_date
@@ -128,8 +129,17 @@ class StrainTrendsDF(object):
         self.trend_stats = None # (OrderedDict)
 
 
-    def constuct_trendsDF(self):
-        """Main method"""
+    def main(self):
+        self._constuct_basic_trendsDF()
+        if self.RA_params:
+            self._compute_rolling_averages()
+        if self.exp_smooth_params:
+            self._compute_exp_smoothed_trends()
+        self.aggregate_stats()
+
+
+    def _constuct_basic_trendsDF(self):
+        """DF with sales over period"""
         self._slice_timeseries()
         sales_col_name = self.ts.name.split(' -- ')[-1].lower()
         self.trendsDF = pd.DataFrame(data=self.ts_sample.values,
@@ -137,6 +147,21 @@ class StrainTrendsDF(object):
                                     index=self.ts_sample.index
                                     )
         self.trendsDF.name = self._trendsDF_name()
+
+
+    def _compute_rolling_averages(self):
+        self.raw_df = pd.DataFrame(self.ts)
+        for wk_window in self.RA_params:
+            boxcar = wk_window * 7
+            col_name = '{}WK RA'.format(wk_window)
+            self.raw_df[col_name] = self.ts.rolling(window=boxcar).mean()
+            self.trendsDF[col_name] = self.raw_df[col_name][self.trendsDF.index]
+            self.trendsDF[col_name] = self.trendsDF[col_name] - self.trendsDF[col_name][0]
+            if self.normed:
+                # DEBUG THIS! NOT NORMING THE RIGHT THING
+                normed_col_name = '{}WK RA normd'.format(wk_window)
+                self.trendsDF[normed_col_name] = self.norm_Series(self.trendsDF[col_name])
+
 
     def aggregate_stats(self):
         """Construct trend_stats from trendsDF"""
@@ -152,6 +177,7 @@ class StrainTrendsDF(object):
         else:
             self.ts_sample = self.ts[-self._period_days:]
 
+
     def _trendsDF_name(self):
         """Construct string for trendsDF pandas DataFrame name attribute"""
         sales_or_units = self.ts.name.split(' -- ')[-1]
@@ -161,15 +187,26 @@ class StrainTrendsDF(object):
             ending = self.end_date
 
         DF_name = ('{} (ID: {}) Trends in {} over {} Weeks Ending {}').format(
-                                        self.strain_name,
-                                        self.strain_ID,
-                                        sales_or_units,
-                                        self.period_wks,
-                                        ending
-                                        )
+            self.strain_name,
+            self.strain_ID,
+            sales_or_units,
+            self.period_wks,
+            ending
+            )
         return DF_name
 
-
+    def norm_Series(self, col):
+        """Returns time series rescaled then shifted such that t0 = 0
+        NOTE: Due to shifting, some normed values may exceed the feature range (-1, 1)
+        """
+        values = col.values
+        values = values.reshape(-1,1)
+        scaler = MinMaxScaler(feature_range=(-1,1))
+        scaler = scaler.fit(values)
+        normed_trend = scaler.transform(values).flatten()
+        normed_trend = pd.Series(normed_trend - normed_trend[0], index=col.index)
+        # normed_trend.name = ts.name + ' NORMED'
+        return normed_trend
 
 
 
