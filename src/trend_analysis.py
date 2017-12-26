@@ -3,6 +3,8 @@ Utilities for trend analysis
 
 CLASSES:
  -- StrainSalesDF(strain_id)
+ -- StrainTrendsDF(ts, period_wks, end_date=None, RA_params=None,
+                   exp_smooth_params=None, normed=True)
 
 FUNCTIONS
  -- compute_rolling_avg(df, window_wks, data_col='ttl_sales')
@@ -110,6 +112,15 @@ class StrainTrendsDF(object):
     ATTRIBUTES:
      -- trendsDF: (pandas DataFrame)
      -- trend_stats: (dict)
+
+    METHODS:
+     -- main(): run after initialization to populate trendsDF
+     -- aggregate_stats(): populates trend_stats containing record for strain
+        aggregated from trendsDF object
+     -- norm_Series(col): rescales (-1, 1) and shifts selected data column
+     -- trend_AUC(ts): computes area under curve for time series
+     -- compute_aggr_slope(ts): returns slope of line describing avg growth rate
+        over selected time series data
     """
 
     def __init__(self, ts, period_wks, end_date=None, RA_params=None,
@@ -126,7 +137,7 @@ class StrainTrendsDF(object):
         self.strain_ID = int(self.ts.name.split(')')[0].split(' ')[-1])
         self.ts_sample = None
         self.trendsDF = None
-        self.trend_stats = None # (OrderedDict)
+        self.trend_stats = {}
 
 
     def main(self):
@@ -165,10 +176,10 @@ class StrainTrendsDF(object):
     def aggregate_stats(self):
         """Construct trend_stats from trendsDF"""
         # DEBUG THIS! object is not coming out in proper order; can't import to df
-        self.trend_stats = OrderedDict({'strain_name': self.strain_name,
-                                        'strain_ID': self.strain_ID,
-                                        'ttl_sales': None
-                                        })
+        self.trend_stats = {'strain_name': self.strain_name,
+                            'strain_ID': self.strain_ID,
+                            'ttl_sales': None
+                                        }
 
     def _slice_timeseries(self):
         """Construct ts_sample attribute"""
@@ -205,8 +216,18 @@ class StrainTrendsDF(object):
         scaler = scaler.fit(values)
         scaled_vals = scaler.transform(values).flatten()
         normed_trend = pd.Series(scaled_vals - scaled_vals[0], index=col.index)
-        # normed_trend.name = ts.name + ' NORMED'
         return normed_trend
+
+    def trend_AUC(self, ts):
+        """Compute trend AUC for column in trendDF
+        """
+        return np.trapz(ts.values)
+
+    def compute_aggr_slope(self, ts):
+        """Redistribute AUC under straight line and return slope of line
+        in units of avg sales or units sold gained/lost per week"""
+        AUC = self.trend_AUC(ts)
+        return (14 * AUC) / (len(ts)**2)
 
 
 
