@@ -156,7 +156,6 @@ class StrainTrendsDF(object):
             col_name = '{}WK RA'.format(wk_window)
             self.raw_df[col_name] = self.ts.rolling(window=boxcar).mean()
             self.trendsDF[col_name] = self.raw_df[col_name][self.trendsDF.index]
-            self.trendsDF[col_name] = self.trendsDF[col_name] - self.trendsDF[col_name][0]
             if self.normed:
                 # DEBUG THIS! NOT NORMING THE RIGHT THING
                 normed_col_name = '{}WK RA normd'.format(wk_window)
@@ -204,8 +203,8 @@ class StrainTrendsDF(object):
         values = values.reshape(-1,1)
         scaler = MinMaxScaler(feature_range=(-1,1))
         scaler = scaler.fit(values)
-        normed_trend = scaler.transform(values).flatten()
-        normed_trend = pd.Series(normed_trend - normed_trend[0], index=col.index)
+        scaled_vals = scaler.transform(values).flatten()
+        normed_trend = pd.Series(scaled_vals - scaled_vals[0], index=col.index)
         # normed_trend.name = ts.name + ' NORMED'
         return normed_trend
 
