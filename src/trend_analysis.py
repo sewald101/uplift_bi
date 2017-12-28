@@ -1,5 +1,5 @@
 """
-Utilities for trend analysis
+UTILITIES FOR SALES TREND ANALYSIS
 
 CLASSES:
  -- StrainSalesDF(strain_id)
@@ -8,7 +8,7 @@ CLASSES:
 
 MAJOR FUNCTIONS:
  -- StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
-                   exp_smooth_params=None, normed=True, data_on_sales=True)
+                   exp_smooth_params=None, normed=True, compute_on_sales=True)
 
 MINOR FUNCTIONS:
  -- compute_rolling_avg(df, window_wks, data_col='ttl_sales')
@@ -28,7 +28,7 @@ from sqlalchemy import create_engine
 
 class StrainSalesDF(object):
     """
-    Initialize with strain_id (int) then run construct_df() method to populate
+    Initialize with strain_id (int) then run main() method to populate
     attributes
 
     ATTRIBUTES:
@@ -38,8 +38,8 @@ class StrainSalesDF(object):
      -- strain_id (int)
      -- strain_name (string)
 
-    NOTE: DataFrame and Series titles with strain name and ID contained in
-          df.name and Series.name attributes
+    NOTE: DataFrame and Series title strings with strain name and ID may be accessed
+        via DataFrame.name and Series.name attributes
     """
 
     def __init__(self, strain_id):
@@ -52,13 +52,12 @@ class StrainSalesDF(object):
         self.sales = None
         self.units_sold = None
 
-    def construct_df(self):
+    def main(self):
         self._query_strain_sales()
         self._connect_to_postgres()
         self._SQL2pandasdf()
 
     def _query_strain_sales(self):
-        """Enter strain id (int); returns query for strain's daily sales"""
         self._query = ("""
         SELECT CAST(DATE_TRUNC('day', ds.date_of_sale) AS DATE) as date
          , st.strain_display_name as strain_name
@@ -95,40 +94,41 @@ class StrainSalesDF(object):
 class StrainTrendsDF(object):
     """Convert raw time series sales or unit-sales data for a single strain into
     engineered trend data, including rolling averages and exponentially smoothed
-    trends for both absolute and normalized values.
+    trends for both absolute and normalized (rescaled) values.
 
     INPUT:
-     -- ts: StrainSalesDF.sales or .units_sold object, time series (pandas Series)
-     -- period_wks: date span in weeks reaching back from most recent datum,
-        used to define sampling period (int)
-     -- end_date: optional, date string (e.g., '07/15/2016') other than most recent
-        datum before which to extend sampling period (str, default=None)
-     -- MA_params: one or more rolling "boxcar" windows, in weeks, by which
-        to generate distinct columns of rolling average data (list of ints, default=None)
-     -- exp_smooth_params: one or more alpha smoothing factors (0 < alpha < 1)
-        by which to generate distinct columns of exponentially smoothed columns
-        (list of floats, default=None)
-     -- normed: (default = True) add a column for each rolling average or exp
-        smoothed column that computes on data rescaled (-1, 1) and then shifted
-        such that datum at t0 = 0.
+     -- ts: StrainSalesDF.sales or .units_sold object (pandas Series)
+     -- period_wks: (int) date span in weeks measured back from most recent datum,
+          used to define sampling period
+     -- end_date: (date string of form: '07/15/2016', default=None) alternative
+          end-date for sampling period (default=None)
+     -- MA_params: (list of ints, default=None) one or more rolling "boxcar"
+          windows, in weeks, by which to generate distinct columns of moving-
+          average data
+     -- exp_smooth_params: (list of floats, default=None) one or more alpha
+          smoothing factors (0 < alpha < 1)by which to generate distinct columns
+          of exponentially smoothed data
+     -- normed: (bool, default=True) add a column for each moving-average or
+          exponentially smoothed column that computes on data rescaled (-1, 1)
+          and then shifted such that datum at t0 = 0.
 
     ATTRIBUTES:
      -- trendsDF: (pandas DataFrame)
      -- trend_stats: (OrderedDict) aggregate statistics, single record for insertion
-        into comparison DF
+          into comparison DF
      -- strain_name: (str) extracted from ts.name
      -- strain_ID: (int) extracted from ts.name
      -- sales_col_name: (str) either 'daily sales' or 'daily units sold', extracted
-        from ts.name
+          from ts.name
 
     METHODS:
      -- main(): run after initialization to populate trendsDF
      -- aggregate_stats(): populates trend_stats containing record for strain
-        aggregated from trendsDF object
+          aggregated from trendsDF object
      -- norm_Series(col): rescales (-1, 1) and shifts selected data column
      -- trend_AUC(ts): computes area under curve for time series
      -- compute_aggr_slope(ts): returns slope of line describing avg growth rate
-        over selected time series data
+          over selected time series data
     """
 
     def __init__(self, ts, period_wks, end_date=None, MA_params=None,
@@ -171,22 +171,23 @@ class StrainTrendsDF(object):
 
     def _compute_rolling_averages(self):
         self.raw_df = pd.DataFrame(self.ts)
+        rounder = (lambda x: round(x, 0))
         for wk_window in self.MA_params:
             boxcar = wk_window * 7
             col_name = '{}wk MA'.format(wk_window)
             self.raw_df[col_name] = self.ts.rolling(window=boxcar).mean()
-            self.trendsDF[col_name] = self.raw_df[col_name][self.trendsDF.index]
-            # Shift moving averages to t0 = 0
             self.trendsDF[col_name] = \
+                self.raw_df[col_name][self.trendsDF.index].apply(rounder)
+            # Shift moving averages to t0 = 0
+            self.trendsDF[col_name + ' SHIFTED'] = \
                 self.trendsDF[col_name] - self.trendsDF[col_name][0]
 
             if self.normed:
-                normed_col_name = '{}wk MA NORMD'.format(wk_window)                # self.raw_df['normed_col_name'] = self.ts.rolling(window=boxcar).mean()
+                normed_col_name = '{}wk MA NORMD'.format(wk_window)
                 self.trendsDF[normed_col_name] = \
                     self.norm_Series(self.trendsDF[col_name])
-                    # This takes the shifted raw values (gains) that start with zero, rescales them,
-                    # then shifts them again to zero. Does this make sense? Will this truly
-                    # put all strains on the same footing and scale?
+                    # This takes the shifted MA values that start with zero,
+                    #  rescales them (-1, 1), then shifts them again to zero.
 
 
     def aggregate_stats(self):
@@ -196,6 +197,10 @@ class StrainTrendsDF(object):
         self.trend_stats['strain_id'] = self.strain_ID
         self.trend_stats['cumulative ' + self.sales_col_name.lower()] = \
             sum(self.trendsDF[self.trendsDF.columns[0]])
+        if 'units' in self.sales_col_name.lower():
+            sales_or_units = ' (units)'
+        else:
+            sales_or_units = ' ($)'
 
         for column in self.trendsDF.columns[1:]:
             if 'NORMD' in column:
@@ -203,18 +208,26 @@ class StrainTrendsDF(object):
                     self.trend_AUC(self.trendsDF[column])
                 self.trend_stats[column + ' SLOPE'] = \
                     self.compute_aggr_slope(self.trendsDF[column])
-            else:
+
+            elif 'SHIFTED' in column:
+                ## Un-comment two lines below for un-scaled AUC
                 # self.trend_stats[column + ' AUC'] = \
                 #     self.trend_AUC(self.trendsDF[column])
                 self.trend_stats[column + ' log-scaled AUC'] = \
-                    self.trend_AUC(self.trendsDF[column], log_scale=True)
-                self.trend_stats[column + ' wkly avg gain($)'] = \
+                    self.trend_AUC(self.trendsDF[column], log_scaled=True)
+                self.trend_stats[column + ' avg weekly gain' + sales_or_units] = \
                     round(7 * self.compute_aggr_slope(self.trendsDF[column]), 0)
+
+            else:
+                self.trend_stats[column + ' log-scaled AUC'] = \
+                    self.trend_AUC(self.trendsDF[column], log_scaled=True)
 
     def _slice_timeseries(self):
         """Construct ts_sample attribute"""
+        date_index = pd.to_datetime(self.end_date)
+        offset = pd.DateOffset(self._period_days - 1)
         if self.end_date:
-            self.ts_sample = self.ts[self.end_date - self._period_days:self.end_date]
+            self.ts_sample = self.ts[date_index - offset:date_index]
         else:
             self.ts_sample = self.ts[-self._period_days:]
 
@@ -245,20 +258,24 @@ class StrainTrendsDF(object):
         scaler = MinMaxScaler(feature_range=(-1,1))
         scaler = scaler.fit(values)
         scaled_vals = scaler.transform(values).flatten()
-        # normed_trend = pd.Series(scaled_vals, index=col.index)
-        ## Shifted version below; either shift here or in compute rolling avgs method
         normed_trend = pd.Series(scaled_vals - scaled_vals[0], index=col.index)
         return normed_trend
 
 
-    def trend_AUC(self, ts, log_scale=False):
-        """Compute trend AUC or (optionally) log or AUC for column in trendsDF
+    def trend_AUC(self, ts, log_scaled=False, sqrt_scaled=False):
+        """Compute trend AUC or (optionally) log-scaled AUC or sqrt_scaled AUC
+        for column in trendsDF
         """
-        if log_scale:
+        if log_scaled:
             if np.trapz(ts.values) < 0:
                 return -1 * np.log(-1 * np.trapz(ts.values))
             else:
                 return np.log(np.trapz(ts.values))
+        elif sqrt_scaled:
+            if np.trapz(ts.values) < 0:
+                return -1 * np.sqrt(-1 * np.trapz(ts.values))
+            else:
+                return np.sqrt(np.trapz(ts.values))
         else:
             return np.trapz(ts.values)
 
@@ -273,28 +290,34 @@ class StrainTrendsDF(object):
 
 def StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
                   exp_smooth_params=None, normed=True, compute_on_sales=True):
-    """Construct DataFrame showing comparative sales statistics among multiple strains
+    """Construct DataFrame showing comparative sales stats among multiple strains
+    See output DataFrame.name attribute for title.
+
     ARGUMENTS:
-     -- strain_IDs: (list of ints) list of strain IDs for comparison
+     -- strain_IDs: (list of ints) list of strain IDs for statistical comparison
      -- period_wks: (int) sampling period in weeks
+
      OPTIONAL
-     -- end_date: (str: '07/15/2016', default=None) date string defining
-        end of sampling period. Default (=None) uses most recent date.
+     -- end_date: (date string: '07/15/2016', default=None) date string defining
+          end of sampling period. Default uses most recent date.
      -- MA_params: (list of ints, default=None) one or more rolling "boxcar"
-        windows, in weeks, by which to compute moving averages
+          windows, in weeks, by which to compute moving averages
      -- exp_smooth_params: (list of floats, default=None) one or more alpha
-        smoothing factors (0 < alpha < 1) by which to generate distinct columns
-        of exponentially smoothed data
-     -- normed: (default = True) add a column for each rolling average or expon.
-        smoothed column that computes on data that has been rescaled (-1, 1)
-        and then shifted such that datum at t0 = 0.
-     -- compute_on_sales: (default=True) computes on sales data; if False, computes on
-        units_sold data
+          smoothing factors (0 < alpha < 1) by which to generate distinct columns
+          of exponentially smoothed data
+     -- normed: (bool, default=True) add a column for each rolling average or expon.
+          smoothed column that computes on data that has been rescaled (-1, 1)
+          and then shifted such that datum at t0 = 0.
+     -- compute_on_sales: (bool, default=True) computes on sales data; if False,
+          computes on units-sold data
+
     """
     data = []
+    counter = 0
+    df_name = None
     for strain in strain_IDs:
         raw_data = StrainSalesDF(strain)
-        raw_data.construct_df()
+        raw_data.main()
         if compute_on_sales:
             ts = raw_data.sales
         else:
@@ -304,15 +327,13 @@ def StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
                                      exp_smooth_params, normed)
         trends_data.main()
         data.append(trends_data.trend_stats)
+        if counter < 1:
+            df_name = trends_data.trendsDF.name.split(') ')[1]
+        counter += 1
 
     strain_stats_df = pd.DataFrame(data, columns=data[0].keys())
-    """ADD DF NAME HERE!!"""
+    strain_stats_df.name = df_name
     return strain_stats_df
-
-
-
-
-
 
 
 
@@ -323,10 +344,6 @@ def compute_rolling_avg(ts, window_wks):
     """
     boxcar = window_wks * 7
     return ts.rolling(window=boxcar).mean()
-
-def smooth_exponentially(ts, alpha):
-    """Apply exponential smoothing to sliced time series"""
-    pass
 
 
 def slice_timeseries(ts, period_wks, end_date=None):
@@ -376,28 +393,21 @@ def add_rolling_avg_col(df, window_wks, data_col='ttl_sales'):
     col = 'rolling_{}wk'.format(window_wks)
     df[col] = df[data_col].rolling(window=boxcar).mean()
 
-def strain_trendsDF():
-    pass
-
-def strain_stats():
-    pass
-
-def strain_rankDF():
-    pass
 
 
 if __name__=='__main__':
 
-    strains = range(1, 10) # strain IDs
-    MAs = [5] # moving average window(s) in weeks
+    """Set input variables"""
+    strains = range(1, 10) # list of strain IDs
+    MAs = [5] # list of moving average window(s) in weeks
     sample_period = 20 # in weeks
 
     """Run StrainSalesDF method and access class attributes"""
     strain_3 = StrainSalesDF(3)
-    strain_3.construct_df()
-    raw_df_3 = strain_3.strain_df # DataFrame of sales and units for strain
-    sales_3 = strain_3.sales # Series of sales
-    units_3 = strain_3.units_sold # Series of units sold
+    strain_3.main()
+    raw_df_3 = strain_3.strain_df # DataFrame of daily sales and units for strain
+    sales_3 = strain_3.sales # time series (pd.Series) of daily sales
+    units_3 = strain_3.units_sold # time Series of daily units sold
 
     """Run StrainTrendsDF method and access class attributes"""
     trends_3 = StrainTrendsDF(sales_3, sample_period, MA_params=MAs)
@@ -405,9 +415,11 @@ if __name__=='__main__':
     trends_df_3 = trends_3._trendsDF # DataFrame with columns of transformed data
     stats_3 = trends_3.trend_stats # Single record (OrderedDict) of stats for strain
 
-    """Run StrainStatsDF function to generate comparative stats DF"""
+    """Run StrainStatsDF function to generate comparative stats DF; Builds DF from
+    individual records in the form of StrainTrendsDF.trend_stats objects"""
     comps_df = StrainStatsDF(strains, sample_period, MA_params=MAs)
 
+    """Print various attributes (names, DFs, Series) to test pipeline"""
     print(raw_df_3.name)
     print(raw_df_3.head(2))
 
