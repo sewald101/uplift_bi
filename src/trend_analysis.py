@@ -312,7 +312,6 @@ def StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
           and then shifted such that datum at t0 = 0.
      -- compute_on_sales: (bool, default=True) computes on sales data; if False,
           computes on units-sold data
-
     """
     data = []
     counter = 0
@@ -336,6 +335,131 @@ def StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
     strain_stats_df.name = df_name
     return strain_stats_df
 
+
+def CompTrendsDF(strain_IDs, period_wks, end_date=None, MA_param=None,
+                  exp_smooth_param=None, shifted=False, normed=False,
+                  compute_on_sales=True):
+    """Construct DataFrame with time series across multiple strains. Default
+    arguments return a DataFrame with time series of raw sales data. Otherwise,
+    assign value to either MA_param= or exp_smooth_param= (NOT BOTH). Optionally
+    may assign True to either shifted= or normed= arguments (NOT BOTH).
+
+    ARGUMENTS:
+     -- strain_IDs: (list of ints) list of strain IDs for comparison
+     -- period_wks: (int) sampling period in weeks
+     -- end_date: (date string: '07/15/2016', default=None) date string defining
+          end of sampling period. Default uses most recent date.
+     -- MA_param: (int) return dataframe of moving averages; int defines "boxcar"
+          window, in weeks, by which to compute moving average
+     -- exp_smooth_params: (float (0 < f < 1), default=None) return dataframe of
+          exponentially smoothed trends; float provides alpha smoothing factor
+     -- shifted: (bool, default=False) shift trend data to t0 = 0
+     -- normed: (bool, default=False) rescale data to feature range (-1, 1)
+          then shift data such that t0 = 0.
+     -- compute_on_sales: (bool, default=True) computes on sales data; if False,
+          computes on units-sold data
+    """
+
+    col_index = column_sel(MA_param, exp_smooth_param, shifted, normed)
+    if MA_param:
+        A = '{}-Week Moving Average '.format(MA_param) # DF title element
+        MA_param = [MA_param] # convert to list
+    if exp_smooth_param:
+        B = ', Exponentially Smoothed (alpha: {})'.format(exp_smooth_param)
+        exp_smooth_param = [exp_smooth_param]
+    counter = 0
+
+    for strain in strain_IDs:
+        # Construct base dataframe from first strain
+        if counter < 1:
+            stage_1 = StrainSalesDF(strain)
+            stage_1.main()
+            if compute_on_sales:
+                stage_1_ts = stage_1.sales
+            else:
+                stage_1_ts = stage_1.units_sold
+
+            stage_2 = StrainTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
+                            exp_smooth_param, normed)
+            stage_2.main()
+            seed_df = stage_2.trendsDF
+
+            # Construct comp_trends_df title
+            C = ', Data Shifted t0=0'
+            D = ', Data Rescaled (-1, 1) and Shifted t0=0'
+            E = seed_df.name.split('in ')[1]
+            if col_index == 0:
+                title = E
+            if col_index == 1 and MA_param and not shifted:
+                title = A + E
+            if col_index == 1 and exp_smooth_param and not shifted:
+                title = E + B
+            if col_index == 2 and MA_param and shifted:
+                title = A + E + C
+            if col_index == 2 and exp_smooth_param and shifted:
+                title = E + B + C
+            if col_index == 3 and MA_param and normed:
+                title = A + E + D
+            if col_index == 3 and exp_smooth_param and normed:
+                title = E + B + D
+
+            col_name = [stage_2.strain_name]
+            comp_trends_df = pd.DataFrame(seed_df[seed_df.columns[col_index]])
+            comp_trends_df.columns = [stage_2.strain_name]
+            comp_trends_df.name = title
+
+        # Populate dataframe with remaining strain trends
+        else:
+            pass
+
+        counter += 1
+
+    return comp_trends_df
+
+
+
+def column_sel(MA_param=None, exp_smooth_param=None, shifted=False, normed=False):
+    """Return integer for DataFrame column selection"""
+    if MA_param or exp_smooth_param:
+        smoothed = True
+    else:
+        return 0
+    if smoothed and not (shifted or normed):
+        return 1
+    if smoothed and shifted:
+        return 2
+    if smoothed and normed:
+        return 3
+
+
+
+def baseDF(df, strain_ID, ):
+    """Construct base DataFrame for CompTrendsDF"""
+    pass
+
+
+
+    data = []
+    counter = 0
+    df_name = None
+    for strain in strain_IDs:
+        raw_data = StrainSalesDF(strain)
+        raw_data.main()
+        if compute_on_sales:
+            ts = raw_data.sales
+        else:
+            ts = raw_data.units_sold
+        trends_data = StrainTrendsDF(ts, period_wks, end_date, MA_params,
+                                     exp_smooth_params, normed)
+        trends_data.main()
+        data.append(trends_data.trend_stats)
+        if counter < 1:
+            df_name = trends_data.trendsDF.name.split(') ')[1]
+        counter += 1
+
+    strain_stats_df = pd.DataFrame(data, columns=data[0].keys())
+    strain_stats_df.name = df_name
+    return strain_stats_df
 
 
 def compute_rolling_avg(ts, window_wks):
