@@ -271,11 +271,13 @@ class StrainTrendsDF(object):
                 return -1 * np.log(-1 * np.trapz(ts.values))
             else:
                 return np.log(np.trapz(ts.values))
+
         elif sqrt_scaled:
             if np.trapz(ts.values) < 0:
                 return -1 * np.sqrt(-1 * np.trapz(ts.values))
             else:
                 return np.sqrt(np.trapz(ts.values))
+
         else:
             return np.trapz(ts.values)
 
@@ -290,7 +292,7 @@ class StrainTrendsDF(object):
 
 def StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
                   exp_smooth_params=None, normed=True, compute_on_sales=True):
-    """Construct DataFrame showing comparative sales stats among multiple strains
+    """Construct DataFrame showing comparative sales stats among multiple products.
     See output DataFrame.name attribute for title.
 
     ARGUMENTS:
@@ -322,7 +324,6 @@ def StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
             ts = raw_data.sales
         else:
             ts = raw_data.units_sold
-
         trends_data = StrainTrendsDF(ts, period_wks, end_date, MA_params,
                                      exp_smooth_params, normed)
         trends_data.main()
