@@ -9,6 +9,9 @@ CLASSES:
 MAJOR FUNCTIONS:
  -- StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
                    exp_smooth_params=None, normed=True, compute_on_sales=True)
+ -- CompTrendsDF(strain_IDs, period_wks, end_date=None, MA_param=None,
+                   exp_smooth_param=None, shifted=False, normed=False,
+                   compute_on_sales=True)
 
 MINOR FUNCTIONS:
  -- compute_rolling_avg(df, window_wks, data_col='ttl_sales')
@@ -336,6 +339,7 @@ def StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
     return strain_stats_df
 
 
+
 def CompTrendsDF(strain_IDs, period_wks, end_date=None, MA_param=None,
                   exp_smooth_param=None, shifted=False, normed=False,
                   compute_on_sales=True):
@@ -363,7 +367,7 @@ def CompTrendsDF(strain_IDs, period_wks, end_date=None, MA_param=None,
     col_index = column_sel(MA_param, exp_smooth_param, shifted, normed)
     if MA_param:
         A = '{}-Week Moving Average '.format(MA_param) # DF title element
-        MA_param = [MA_param] # convert to list
+        MA_param = [MA_param] # insert single param to list for StrainTrendsDF class
     if exp_smooth_param:
         B = ', Exponentially Smoothed (alpha: {})'.format(exp_smooth_param)
         exp_smooth_param = [exp_smooth_param]
@@ -386,7 +390,7 @@ def CompTrendsDF(strain_IDs, period_wks, end_date=None, MA_param=None,
 
             # Construct comp_trends_df title
             C = ', Data Shifted t0=0'
-            D = ', Data Rescaled (-1, 1) and Shifted t0=0'
+            D = ', Data Rescaled (-1, 1) and Shifted (t0=0)'
             E = seed_df.name.split('in ')[1]
             if col_index == 0:
                 title = E
@@ -407,12 +411,24 @@ def CompTrendsDF(strain_IDs, period_wks, end_date=None, MA_param=None,
             comp_trends_df = pd.DataFrame(seed_df[seed_df.columns[col_index]])
             comp_trends_df.columns = [stage_2.strain_name]
             comp_trends_df.name = title
+            counter += 1
 
         # Populate dataframe with remaining strain trends
         else:
-            pass
+            stage_1 = StrainSalesDF(strain)
+            stage_1.main()
+            if compute_on_sales:
+                stage_1_ts = stage_1.sales
+            else:
+                stage_1_ts = stage_1.units_sold
 
-        counter += 1
+            stage_2 = StrainTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
+                            exp_smooth_param, normed)
+            stage_2.main()
+            source_df = stage_2.trendsDF
+
+            comp_trends_df[stage_2.strain_name] = source_df.iloc[:,col_index]
+
 
     return comp_trends_df
 
@@ -431,11 +447,6 @@ def column_sel(MA_param=None, exp_smooth_param=None, shifted=False, normed=False
     if smoothed and normed:
         return 3
 
-
-
-def baseDF(df, strain_ID, ):
-    """Construct base DataFrame for CompTrendsDF"""
-    pass
 
 
 
