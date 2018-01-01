@@ -5,6 +5,7 @@ CLASSES:
  -- StrainSalesDF(strain_id)
  -- StrainTrendsDF(ts, period_wks, end_date=None, MA_params=None,
                    exp_smooth_params=None, normed=True)
+ -- RankStrains(strain_stats_df, N_results=None)
 
 MAJOR FUNCTIONS:
  -- StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
@@ -448,29 +449,88 @@ def column_sel(MA_param=None, exp_smooth_param=None, shifted=False, normed=False
         return 3
 
 
+class RankStrains(object):
+    """Initialize with StrainStatsDF object and (optionally) by number of top
+    results desired; Rank strains/products by user_selected statistic
+
+    METHOD:
+     -- main(): Rank strains and populate attributes
+
+    ATTRIBUTES:
+     -- results: pandas DataFrame of strains ranked by selected statistic
+     -- ranked_IDs: numpy array of ranked strain IDs
+     -- ranked_df: same as RankStrains.results but including all other statistics
+
+    """
+
+    def __init__(self, strain_stats_df, N_results=None):
+        self.strain_stats_df = strain_stats_df
+        self.N_results = N_results
+        self.results = None
+        self.ranked_IDs = None
+        self.ranked_df = None
 
 
-    data = []
-    counter = 0
-    df_name = None
-    for strain in strain_IDs:
-        raw_data = StrainSalesDF(strain)
-        raw_data.main()
-        if compute_on_sales:
-            ts = raw_data.sales
+    def main(self):
+        "Rank N-top strains by user-selected statistic; output in pandas DataFrame"
+        stat_idx = self._sel_rank_by()
+        stat_col = self.strain_stats_df.columns[stat_idx]
+        output_cols = list(self.strain_stats_df.columns)
+        output_cols.remove(stat_col)
+        output_cols.insert(2, stat_col)
+
+        ranked = self.strain_stats_df.sort_values(by=stat_col, ascending=False)
+        ranked.index = range(1, len(ranked.index) + 1)
+
+        if self.N_results:
+            self.ranked_df = ranked[output_cols][:self.N_results]
+            self.ranked_IDs = self.ranked_df['strain_id'].values
+            self.results = self.ranked_df.iloc[:,:3]
         else:
-            ts = raw_data.units_sold
-        trends_data = StrainTrendsDF(ts, period_wks, end_date, MA_params,
-                                     exp_smooth_params, normed)
-        trends_data.main()
-        data.append(trends_data.trend_stats)
-        if counter < 1:
-            df_name = trends_data.trendsDF.name.split(') ')[1]
-        counter += 1
+            self.ranked_df = ranked[output_cols]
+            self.ranked_IDs = self.ranked_df['strain_id'].values
+            self.results = self.ranked_df.iloc[:,:3]
 
-    strain_stats_df = pd.DataFrame(data, columns=data[0].keys())
-    strain_stats_df.name = df_name
-    return strain_stats_df
+        self.results.name = self.strain_stats_df.name
+        self.ranked_df.name = self.strain_stats_df.name + \
+                ', Ranked by {}'.format(stat_col)
+
+
+    def _sel_rank_by(self):
+        "Prompt user for column for ranking; return its index"
+        cols = self.strain_stats_df.columns[2:]
+        index = range(1, len(cols) + 1)
+        menu = dict(zip(index, cols))
+        for k, v in menu.iteritems():
+            print(str(k) + ' -- ' + v)
+        selection = int(raw_input('\nSelect statistic for ranking.'))
+        return selection + 1
+
+
+
+
+def rank_strains(strain_stats_df, N_results=None):
+    "Rank N-top strains by user-selected statistic; output in pandas DataFrame"
+    stat_idx = sel_rank_by(strain_stats_df)
+    stat_col = strain_stats_df.columns[stat_idx]
+    ranked_df = strain_stats_df.sort_values(by=stat_col, ascending=False)
+    if N_results:
+        return ranked_df[['strain_name', 'strain_id', stat_col]][:N_results]
+    else:
+        return ranked_df[['strain_name', 'strain_id', stat_col]]
+
+
+def sel_rank_by(strain_stats_df):
+    "Prompt user for column for ranking; return its index"
+    cols = strain_stats_df.columns[2:]
+    index = range(1, len(cols) + 1)
+    menu = dict(zip(index, cols))
+    for k, v in menu.iteritems():
+        print(str(k) + ' -- ' + v)
+    selection = int(raw_input('\nSelect statistic for ranking.'))
+    return selection + 1
+
+
 
 
 def compute_rolling_avg(ts, window_wks):
