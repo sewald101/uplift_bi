@@ -507,6 +507,11 @@ class RankStrains(object):
         return selection + 1
 
 
+""" 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+A LA CARTE FUNCTIONS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+"""
 
 
 def rank_strains(strain_stats_df, N_results=None):
