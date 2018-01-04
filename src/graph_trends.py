@@ -38,12 +38,6 @@ def range_vals(df):
     return (maximum - minimum, minimum, maximum)
 
 
-# def select_step(data_range, max_N_ticks=10):
-#     steps = [1, 10, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000]
-#     for step in steps:
-#         if data_range / step <= max_N_ticks:
-#             return step
-
 def select_step(val_range, low, high, max_N_ticks=10):
     # Set y_axis range on which to calculate step
     digits = lambda x: len(str(int(x)))
@@ -161,9 +155,14 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
 
-    # set y_axis limits
+    # set y_axis limits and format tick labels and grid lines
     if ('norm' or 'scale') in df.name.lower():
-        pass
+        plt.ylim(-2.075, 2)
+        tick_arr = [-1, 0, 1]
+        plt.tick_params(axis='y', which='both', bottom='off', top='off',
+                        left='off', right='off', labelleft='on')
+        plt.ticks(tick_arr, [y for y in tick_arr], fontsize=14)
+        ax.yaxis.grid(True, ls='--', lw=0.75, color='black', alpha=0.5)
 
     else:
         val_range, data_min, data_max = range_vals(df)
