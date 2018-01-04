@@ -38,17 +38,36 @@ def range_vals(df):
     return (maximum - minimum, minimum, maximum)
 
 
-def select_step(data_range, max_N_ticks=10):
+# def select_step(data_range, max_N_ticks=10):
+#     steps = [1, 10, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000]
+#     for step in steps:
+#         if data_range / step <= max_N_ticks:
+#             return step
+
+def select_step(val_range, low, high, max_N_ticks=10):
+    # Set y_axis range on which to calculate step
+    digits = lambda x: len(str(int(x)))
+    range_digits = digits(val_range)
+    low_digits = digits(low)
+    high_digits = digits(high)
+    if low >= 0:
+        if range_digits == high_digits:
+            yaxis_range = high
+        elif range_digits < high_digits:
+            yaxis_range = high - low
+    if low < 0:
+        yaxis_range = high - low
+
     steps = [1, 10, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000]
     for step in steps:
-        if data_range / step <= max_N_ticks:
+        if yaxis_range / step <= max_N_ticks:
             return step
 
 
-def round_to_step(data_max, data_range, max_N_ticks=10):
+def round_to_step(val_range, low, high, max_N_ticks=10):
     """Round max or abs(min) ytick value up to next step"""
-    step = select_step(data_range, max_N_ticks)
-    multiple = (int(data_max) / step) + 1
+    step = select_step(val_range, low, high, max_N_ticks)
+    multiple = (int(high) / step) + 1
     return step * multiple
 
 
@@ -78,7 +97,7 @@ def ylims(val_range, low, high, max_N_ticks=10):
     if low >= 0:
         if range_digits == high_digits:
             y_low = 0
-            y_high = round_to_step(high, val_range, max_N_ticks)
+            y_high = round_to_step(val_range, low, high, max_N_ticks)
 
         elif range_digits < high_digits:
             y_low = -1 * round_to_step(abs(low), val_range, max_N_ticks)
@@ -110,7 +129,10 @@ def y_to_str(y):
         return '-$' + str(abs(y))
 
 def parse_title(str):
-    return (str.split(' over ')[0], str.split(' over ')[1])
+    A, B = str.split(' over ')[0], str.split(' over ')[1]
+    if 'shift' in str.lower():
+        A = 'Change in ' + str.split(' over ')[0]
+    return (A, B)
 
 
 
@@ -146,7 +168,7 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
     else:
         val_range, data_min, data_max = range_vals(df)
         y_low, y_high = ylims(val_range, data_min, data_max, max_N_ticks=max_yticks) # custom function
-        step = select_step(val_range, max_N_ticks=max_yticks)
+        step = select_step(val_range, data_min, data_max, max_N_ticks=max_yticks)
         bottom_buffer = val_range * 0.05
         plt.ylim(y_low - bottom_buffer, y_high)
 
@@ -154,7 +176,10 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
         tick_arr = space_yticks(y_low, y_high, step)
         plt.tick_params(axis='y', which='both', bottom='off', top='off',
                         left='off', right='off', labelleft='on')
-        plt.yticks(tick_arr, [y_to_str(y) for y in tick_arr], fontsize=14)
+        if 'unit' in df.name.lower():
+            plt.yticks(tick_arr, [y for y in tick_arr], fontsize=14)
+        else:
+            plt.yticks(tick_arr, [y_to_str(y) for y in tick_arr], fontsize=14)
         ax.yaxis.grid(True, ls='--', lw=0.75, color='black', alpha=0.5)
 
     # set x_axis limits; add one day to upper limit (for tick mark)
@@ -184,16 +209,16 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
     # Title plot
     if 'over' in df.name:
         sup, sub = parse_title(df.name)
-        plt.figtext(.5, .85, sup, fontsize=20, ha='center')
-        plt.figtext(.5, .82, sub, fontsize=16, ha='center')
+        plt.figtext(0.54, .85, sup, fontsize=20, ha='center')
+        plt.figtext(0.54, .82, sub, fontsize=16, ha='center')
 
     else:
-        plt.title(title_plot(df.name), fontsize=20)
+        plt.title(title_plot(df.name), x=0.54, fontsize=20)
         rcParams['axes.titlepad'] = 50
 
     if write_to_file:
         A = '{}wk_MA'.format(df.name.split('-')[0])
-        B = '_{}'.format(df.name.split(' ')[4])
+        B = '_{}'.format(df.name.split(' ')[5])
         path = '../img/{}.{}'.format(A+B, file_format)
         plt.savefig(path, bbox_inches='tight', pad_inches=0.25)
 
