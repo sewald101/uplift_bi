@@ -109,6 +109,10 @@ def y_to_str(y):
     else:
         return '-$' + str(abs(y))
 
+def parse_title(str):
+    return (str.split(' over ')[0], str.split(' over ')[1])
+
+
 
 def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
                    max_yticks=10, write_to_file=False, file_format='jpeg'):
@@ -125,13 +129,13 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
      -- file_format: (str) image file extension (default='jpeg')
     """
     plt.figure(figsize=(12,fig_height))
-    ax = plt.subplot(111)
+    ax = plt.axes([.1,.1,.8,.65])
     colors = rescale_RGB(palette.colors)
     if reverse_palette:
         colors.reverse()
     # remove plot frame lines
     ax.spines['top'].set_visible(False)
-    ax.spines['bottom'].set_visible(False)
+    # ax.spines['bottom'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
 
@@ -143,14 +147,15 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
         val_range, data_min, data_max = range_vals(df)
         y_low, y_high = ylims(val_range, data_min, data_max, max_N_ticks=max_yticks) # custom function
         step = select_step(val_range, max_N_ticks=max_yticks)
-        plt.ylim(y_low, y_high)
+        bottom_buffer = val_range * 0.05
+        plt.ylim(y_low - bottom_buffer, y_high)
 
         # space and format y_ticks
         tick_arr = space_yticks(y_low, y_high, step)
         plt.tick_params(axis='y', which='both', bottom='off', top='off',
                         left='off', right='off', labelleft='on')
         plt.yticks(tick_arr, [y_to_str(y) for y in tick_arr], fontsize=14)
-        ax.yaxis.grid(True, ls='--')
+        ax.yaxis.grid(True, ls='--', lw=0.75, color='black', alpha=0.5)
 
     # set x_axis limits; add one day to upper limit (for tick mark)
     idx = df.index
@@ -165,7 +170,7 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
 
     # place a minor tick on x-axis at each week (7 days)
     plt.tick_params(axis='x', which='minor', direction='out', length=10,
-                    labelbottom='off', left='off', right='off')
+                    width=1.0, labelbottom='off', left='off', right='off')
     ax.xaxis.set_minor_locator(plt.MultipleLocator(7))
 
     # plot data
@@ -174,15 +179,22 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
         ci = i % len(colors) # revolving index for colors
         plt.plot(df[strain], lw=2.5, color=colors[ci])
         y_pos = df[strain].values[-1]
-        plt.text(idx[-1] + pd.DateOffset(1), y_pos, strain, fontsize=14,
+        plt.text(idx[-1] + pd.DateOffset(1), y_pos, strain, fontsize=16,
                 color=colors[ci], va='center')
+    # Title plot
+    if 'over' in df.name:
+        sup, sub = parse_title(df.name)
+        plt.figtext(.5, .85, sup, fontsize=20, ha='center')
+        plt.figtext(.5, .82, sub, fontsize=16, ha='center')
 
-    plt.title(df.name, fontsize=18)
-    rcParams['axes.titlepad'] = 50
-    plt.show()
+    else:
+        plt.title(title_plot(df.name), fontsize=20)
+        rcParams['axes.titlepad'] = 50
 
     if write_to_file:
-        A = '{}wk_MA'.format(MA_5wk.name.split('-')[0])
-        B = '_{}'.format(MA_5wk.name.split(' ')[4])
+        A = '{}wk_MA'.format(df.name.split('-')[0])
+        B = '_{}'.format(df.name.split(' ')[4])
         path = '../img/{}.{}'.format(A+B, file_format)
         plt.savefig(path, bbox_inches='tight', pad_inches=0.25)
+
+    plt.show()

@@ -14,7 +14,7 @@ MAJOR FUNCTIONS:
                    exp_smooth_param=None, shifted=False, normed=False,
                    compute_on_sales=True)
 
-MINOR FUNCTIONS:
+A LA CARTE FUNCTIONS:
  -- compute_rolling_avg(df, window_wks, data_col='ttl_sales')
  -- slice_timeseries(data, period_wks, end_date=None)
  -- norm_Series(ts)
@@ -367,7 +367,7 @@ def CompTrendsDF(strain_IDs, period_wks, end_date=None, MA_param=None,
 
     col_index = column_sel(MA_param, exp_smooth_param, shifted, normed)
     if MA_param:
-        A = '{}-Week Moving Average '.format(MA_param) # DF title element
+        A = '{}-Week Moving Average of '.format(MA_param) # DF title element
         MA_param = [MA_param] # insert single param to list for StrainTrendsDF class
     if exp_smooth_param:
         B = ', Exponentially Smoothed (alpha: {})'.format(exp_smooth_param)
@@ -507,7 +507,7 @@ class RankStrains(object):
         return selection + 1
 
 
-""" 
+"""
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 A LA CARTE FUNCTIONS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -534,8 +534,6 @@ def sel_rank_by(strain_stats_df):
         print(str(k) + ' -- ' + v)
     selection = int(raw_input('\nSelect statistic for ranking.'))
     return selection + 1
-
-
 
 
 def compute_rolling_avg(ts, window_wks):
