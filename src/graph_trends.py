@@ -6,7 +6,7 @@ import matplotlib.dates as mdates
 from matplotlib import rcParams
 from palettable.tableau import (Tableau_20, Tableau_10, TableauLight_10,
         TableauMedium_10,PurpleGray_6, PurpleGray_12, ColorBlind_10, Gray_5)
-
+from palettable.colorbrewer.sequential import Greens_5, Greens_9
 
 import trend_analysis as ta
 from trend_analysis import StrainSalesDF # converts single strain data to df
@@ -19,13 +19,13 @@ from trend_analysis import RankStrains # returns ranked results
 """Graphic design adapted from: http://www.randalolson.com/2014/06/28/how-to-make-beautiful-data-visualizations-in-python-with-matplotlib/
 """
 
-def rescale_RGB(RGB_palate):
+def rescale_RGB(RGB_palette):
     """Input list of RGB tuples; return list of tuples rescaled (0, 1)"""
-    scaled_palate = []
-    for i in range(len(RGB_palate)):
-        r, g, b = RGB_palate[i]
-        scaled_palate.append((r / 255., g / 255., b / 255.))
-    return scaled_palate
+    scaled_palette = []
+    for i in range(len(RGB_palette)):
+        r, g, b = RGB_palette[i]
+        scaled_palette.append((r / 255., g / 255., b / 255.))
+    return scaled_palette
 
 
 def range_vals(df):
@@ -95,12 +95,12 @@ def space_yticks(y_low, y_high, step):
     if y_low >= 0:
         return range(0, y_high + step, step)
     else:
-        neg_ticks = range(0, y_low - step, -step)
-        neg_ticks.reverse()
-        neg_ticks.remove(0)
+        yticks = range(0, y_low - step, -step) # start w/ negative ticks
+        yticks.reverse()
+        yticks.remove(0)
         pos_ticks = range(0, y_high + step, step)
-        neg_ticks.extend(pos_ticks)
-        return neg_ticks
+        yticks.extend(pos_ticks)
+        return yticks
 
 
 def y_to_str(y):
@@ -110,19 +110,25 @@ def y_to_str(y):
         return '-$' + str(abs(y))
 
 
-def PlotCompTrends(df, fig_height=12, palate=Tableau_20, max_yticks=10,
-                   write_to_file=False, file_format='jpeg'):
+def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
+                   max_yticks=10, write_to_file=False, file_format='jpeg'):
     """Plot time series in CompTrendsDF object
     ARGUMENTS:
      -- df: CompTrendsDF object (pandas DataFrame)
      -- fig_height: (int, default=14)
-     -- palate: (list) colors in tuples of RGB values (default=tableau20)
+     -- palette: palettable object (default=Greens_9; possible
+         values: Tableau_20, Tableau_10, TableauLight_10,
+         TableauMedium_10, PurpleGray_6, PurpleGray_12, ColorBlind_10, Greens_5,
+         Greens_9, Greys_5, Greys_9, Purples_5, Purples_9
+     -- reverse_palette: (bool, default=True)
      -- write_to_file: if True, writes plot to image file (default=False)
      -- file_format: (str) image file extension (default='jpeg')
     """
     plt.figure(figsize=(12,fig_height))
     ax = plt.subplot(111)
-    colors = rescale_RGB(palate.colors)
+    colors = rescale_RGB(palette.colors)
+    if reverse_palette:
+        colors.reverse()
     # remove plot frame lines
     ax.spines['top'].set_visible(False)
     ax.spines['bottom'].set_visible(False)
