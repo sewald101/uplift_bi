@@ -122,6 +122,7 @@ def y_to_str(y):
     else:
         return '-$' + str(abs(y))
 
+
 def parse_title(str):
     A, B = str.split(' over ')[0], str.split(' over ')[1]
     if 'shift' in str.lower():
@@ -129,20 +130,35 @@ def parse_title(str):
     return (A, B)
 
 
+def subtitle_y(fig_height):
+    if fig_height >=14: return 0.825
+    if fig_height >= 10: return 0.82
+    elif fig_height <= 5: return 0.79
+    elif fig_height <= 7: return 0.80
+    else: return 0.81
+
+
+def write_file_name(df):
+    A = '{}wk_MA'.format(df.name.split('-')[0])
+    B = '_{}'.format(df.name.split(' ')[5])
+    path = '../img/{}.{}'.format(A+B, file_format)
+    return path
+
 
 def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
-                   max_yticks=10, write_to_file=False, file_format='jpeg'):
+                   max_yticks=10, legend=False, write_path=None):
     """Plot time series in CompTrendsDF object
     ARGUMENTS:
      -- df: CompTrendsDF object (pandas DataFrame)
-     -- fig_height: (int, default=14)
+     -- fig_height: (int, default=12) recommended values 7 <= x <= 14
      -- palette: palettable object (default=Greens_9; possible
          values: Tableau_20, Tableau_10, TableauLight_10,
          TableauMedium_10, PurpleGray_6, PurpleGray_12, ColorBlind_10, Greens_5,
          Greens_9, Greys_5, Greys_9, Purples_5, Purples_9
      -- reverse_palette: (bool, default=True)
-     -- write_to_file: if True, writes plot to image file (default=False)
-     -- file_format: (str) image file extension (default='jpeg')
+     -- max_yticks: (int, default=10)
+     -- legend: (book, default=False) default places product labels at end of lines
+     -- write_path: (str, default=None) write graph to jpeg or png at path provided
     """
     plt.figure(figsize=(12,fig_height))
     ax = plt.axes([.1,.1,.8,.65])
@@ -156,12 +172,12 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
     ax.spines['left'].set_visible(False)
 
     # set y_axis limits and format tick labels and grid lines
-    if ('norm' or 'scale') in df.name.lower():
+    if 'scale' in df.name.lower(): # i.e., if data rescaled / normed
         plt.ylim(-2.075, 2)
         tick_arr = [-1, 0, 1]
         plt.tick_params(axis='y', which='both', bottom='off', top='off',
                         left='off', right='off', labelleft='on')
-        plt.ticks(tick_arr, [y for y in tick_arr], fontsize=14)
+        plt.yticks(tick_arr, [y for y in tick_arr], fontsize=16)
         ax.yaxis.grid(True, ls='--', lw=0.75, color='black', alpha=0.5)
 
     else:
@@ -181,7 +197,7 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
             plt.yticks(tick_arr, [y_to_str(y) for y in tick_arr], fontsize=14)
         ax.yaxis.grid(True, ls='--', lw=0.75, color='black', alpha=0.5)
 
-    # set x_axis limits; add one day to upper limit (for tick mark)
+    # set x_axis limits; add one day to upper limit for last minor tick mark
     idx = df.index
     ax.set_xlim(idx[0], idx[-1] + pd.DateOffset(1))
 
@@ -192,10 +208,10 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
 
-    # place a minor tick on x-axis at each week (7 days)
+    # place a minor tick on x-axis at each week
     plt.tick_params(axis='x', which='minor', direction='out', length=10,
                     width=1.0, labelbottom='off', left='off', right='off')
-    ax.xaxis.set_minor_locator(plt.MultipleLocator(7))
+    ax.xaxis.set_minor_locator(plt.MultipleLocator(7)) # 7 days
 
     # plot data
     strains = list(df.columns)
@@ -203,22 +219,32 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
         ci = i % len(colors) # revolving index for colors
         plt.plot(df[strain], lw=2.5, color=colors[ci])
         y_pos = df[strain].values[-1]
-        plt.text(idx[-1] + pd.DateOffset(1), y_pos, strain, fontsize=16,
-                color=colors[ci], va='center')
+        if not legend: # strain labels at line ends
+            plt.text(idx[-1] + pd.DateOffset(1), y_pos, strain, fontsize=16,
+                    color=colors[ci], va='center')
+
+    # format optional legend
+    if legend:
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0 + box.height * 0.1,
+                 box.width, box.height * 0.9])
+        num_products = len(list(df.columns))
+        legend_cols = num_products if num_products <= 5 else num_products / 2
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.13),
+          frameon=True, ncol=legend_cols, fontsize=12)
+
     # Title plot
-    if 'over' in df.name:
+    title_x = 0.50 if legend else 0.54
+    if 'over' in df.name: # conditional on smoothed data
         sup, sub = parse_title(df.name)
-        plt.figtext(0.54, .85, sup, fontsize=20, ha='center')
-        plt.figtext(0.54, .82, sub, fontsize=16, ha='center')
+        plt.figtext(title_x, .85, sup, fontsize=20, ha='center')
+        plt.figtext(title_x, subtitle_y(fig_height), sub, fontsize=16, ha='center')
 
     else:
-        plt.title(title_plot(df.name), x=0.54, fontsize=20)
+        plt.title(title_plot(df.name), x=title_x, fontsize=20)
         rcParams['axes.titlepad'] = 50
 
-    if write_to_file:
-        A = '{}wk_MA'.format(df.name.split('-')[0])
-        B = '_{}'.format(df.name.split(' ')[5])
-        path = '../img/{}.{}'.format(A+B, file_format)
-        plt.savefig(path, bbox_inches='tight', pad_inches=0.25)
+    if write_path:
+        plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25)
 
     plt.show()
