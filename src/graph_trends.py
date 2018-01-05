@@ -47,7 +47,7 @@ def select_step(val_range, low, high, max_N_ticks=10):
     if low >= 0:
         if range_digits == high_digits:
             yaxis_range = high
-        elif range_digits < high_digits:
+        if range_digits < high_digits:
             yaxis_range = high - low
     if low < 0:
         yaxis_range = high - low
@@ -62,6 +62,13 @@ def round_to_step(val_range, low, high, max_N_ticks=10):
     """Round max or abs(min) ytick value up to next step"""
     step = select_step(val_range, low, high, max_N_ticks)
     multiple = (int(high) / step) + 1
+    return step * multiple
+
+
+def round_down_to_step(val_range, low, high, max_N_ticks=10):
+    """Round positive low ytick value down to next step"""
+    step = select_step(val_range, low, high, max_N_ticks)
+    multiple = (int(low) / step)
     return step * multiple
 
 
@@ -94,19 +101,24 @@ def ylims(val_range, low, high, max_N_ticks=10):
             y_high = round_to_step(val_range, low, high, max_N_ticks)
 
         elif range_digits < high_digits:
-            y_low = -1 * round_to_step(abs(low), val_range, max_N_ticks)
-            y_high = round_to_step(high, val_range, max_N_ticks)
+            y_low = round_down_to_step(val_range, low, high, max_N_ticks)
+            y_high = round_to_step(val_range, low, high, max_N_ticks)
 
     if low < 0:
         y_low = -1 * round_to_step(abs(low), val_range, max_N_ticks)
-        y_high = round_to_step(high, val_range, max_N_ticks)
+        y_high = round_to_step(val_range, low, high, max_N_ticks)
 
     return y_low, y_high
 
 
 def space_yticks(y_low, y_high, step):
+    digits = lambda x: len(str(int(x)))
+    range_digits = digits(y_high - y_low)
     if y_low >= 0:
-        return range(0, y_high + step, step)
+        if range_digits < digits(y_high):
+            return range(y_low, y_high + step, step)
+        else:
+            return range(0, y_high + step, step)
     else:
         yticks = range(0, y_low - step, -step) # start w/ negative ticks
         yticks.reverse()
