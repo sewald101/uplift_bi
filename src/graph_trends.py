@@ -111,11 +111,10 @@ def ylims(val_range, low, high, max_N_ticks=10):
     return y_low, y_high
 
 
-def space_yticks(y_low, y_high, step):
-    digits = lambda x: len(str(int(x)))
-    range_digits = digits(y_high - y_low)
+def space_yticks(y_low, y_high, step, trunc_yticks=False):
+    "Return list of y-coordinates for yticks"
     if y_low >= 0:
-        if range_digits < digits(y_high):
+        if trunc_yticks:
             return range(y_low, y_high + step, step)
         else:
             return range(0, y_high + step, step)
@@ -128,7 +127,7 @@ def space_yticks(y_low, y_high, step):
         return yticks
 
 
-def y_to_str(y):
+def y_to_str(y): # format y-labels for graphs of dollar values
     if y >= 0:
         return '$' + str(y)
     else:
@@ -158,7 +157,7 @@ def write_file_name(df):
 
 
 def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
-                   max_yticks=10, legend=False, write_path=None):
+                   max_yticks=10, trunc_yticks=False, legend=False, write_path=None):
     """Plot time series in CompTrendsDF object
     ARGUMENTS:
      -- df: CompTrendsDF object (pandas DataFrame)
@@ -169,6 +168,8 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
          Greens_9, Greys_5, Greys_9, Purples_5, Purples_9
      -- reverse_palette: (bool, default=True)
      -- max_yticks: (int, default=10)
+     -- trunc_yticks: (bool, default=False) If True, remove yticks between zero
+          and step below lowest data value and set that step as x-axis
      -- legend: (book, default=False) default places product labels at end of lines
      -- write_path: (str, default=None) write graph to jpeg or png at path provided
     """
@@ -200,7 +201,7 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
         plt.ylim(y_low - bottom_buffer, y_high)
 
         # space and format y_ticks
-        tick_arr = space_yticks(y_low, y_high, step)
+        tick_arr = space_yticks(y_low, y_high, step, trunc_yticks)
         plt.tick_params(axis='y', which='both', bottom='off', top='off',
                         left='off', right='off', labelleft='on')
         if 'unit' in df.name.lower():
