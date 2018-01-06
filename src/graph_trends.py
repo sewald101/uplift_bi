@@ -312,7 +312,7 @@ def title_subtitle_footnote(results_df):
         footnote = '*NOTE: Computed on Sales Data Rescaled (-1, 1) then Shifted (t0=0).'
 
     if 'normd slope' in stat_str.lower():
-        title = 'Normalized Slopes* of {}Wk-MA Trends in Daily {}'\
+        title = 'Normalized Gradients* of {}Wk-MA Trends in Daily {}'\
             .format(MA, sales_bool)
         subtitle = period_str
         footnote = """*NOTE: Computed on rescaled (-1, 1) and shifted (t0=0) data by redistributing
@@ -369,8 +369,8 @@ def PlotRankedStrains(results_df, fig_height=7):
     # title, subtitle and footnote
     tt, sb, ft = title_subtitle_footnote(results_df)
     plt.figtext(0.5, 0.85, tt, ha='center', fontsize=16)
-    plt.figtext(0.5, 0.80, sb, ha='center', fontsize=14)
-    plt.figtext(0.5, 0.0, ft, ha='center', fontsize=12)
+    if sb: plt.figtext(0.5, 0.80, sb, ha='center', fontsize=14)
+    if ft: plt.figtext(0.5, 0.0, ft, ha='center', fontsize=12)
 
 
     plt.show()
