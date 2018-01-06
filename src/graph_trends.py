@@ -157,7 +157,8 @@ def write_file_name(df):
 
 
 def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
-                   max_yticks=10, trunc_yticks=False, legend=False, write_path=None):
+                   max_yticks=10, trunc_yticks=False, legend=False,
+                   write_path=None):
     """Plot time series in CompTrendsDF object
     ARGUMENTS:
      -- df: CompTrendsDF object (pandas DataFrame)
@@ -259,5 +260,117 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
 
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25)
+
+    plt.show()
+
+"""
+~~~~~~~~~~~~~~~~~~~~~~~
+Graph Ranked Strains
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+"""
+
+def title_subtitle_footnote(results_df):
+    """Take in RankStrains.results object; return title, subtitle and
+    footnote for graphs"""
+    name_str = results_df.name
+    stat_str = results_df.columns[-1]
+    title, subtitle, footnote = None, None, None
+
+    # fragments
+    sales_bool = 'Sales' if 'sales' in name_str.lower() else 'Units Sold'
+    MA = stat_str.split('wk')[0]
+    period_str = name_str.split(' over ')[-1]
+    shifted_str = 'Data Shifted (t0 = 0)'
+    normed_str = 'Computed on Data Rescaled (-1, 1) then Shifted (T0 = 0)'
+
+    if 'cumulative' in stat_str.lower():
+        title = 'Cumulative Total ' + sales_bool + ' over ' + period_str
+
+    if 'ma log' in stat_str.lower():
+        title = 'Log-Areas under {}Wk-MA Trends in Daily {}'.format(
+            MA, sales_bool)
+        subtitle = period_str
+
+    if 'shifted log' in stat_str.lower():
+        title = 'Log-Areas under {}Wk-MA Gain/Loss in Daily {}'.format(
+            MA, sales_bool)
+        subtitle = period_str
+        footnote = 'NOTE: Computed on Data Shifted to t0=0.'
+
+    if 'gain' in stat_str.lower():
+        title = 'Average Rates of Weekly Gain/Loss* in {}Wk-MA Trends in Daily {}'.format(
+            MA, sales_bool)
+        subtitle = period_str
+        footnote = ('*NOTE: Rates computed by redistributing trend AUCs\
+ under straight lines then taking the slopes.')
+
+    if 'normd auc' in stat_str.lower():
+        title = 'Areas under Normalized* {}Wk-MA Trends in Daily {}'\
+            .format(MA, sales_bool)
+        subtitle = period_str
+        footnote = '*NOTE: Computed on Sales Data Rescaled (-1, 1) then Shifted (t0=0).'
+
+    if 'normd slope' in stat_str.lower():
+        title = 'Normalized Slopes* of {}Wk-MA Trends in Daily {}'\
+            .format(MA, sales_bool)
+        subtitle = period_str
+        footnote = """*NOTE: Computed on rescaled (-1, 1) and shifted (t0=0) data by redistributing
+trend AUCs under straight lines then taking the slopes."""
+
+    return title, subtitle, footnote
+
+def PlotRankedStrains(results_df, fig_height=7):
+    """
+    Input: RankStrains.results object (pandas DataFrame)
+    Output: Horizontal bar graph showing strains ranked by statistic
+    """
+    # prepare data series
+    to_plot = pd.Series(results_df.iloc[:,-1].values,
+                        index=results_df['strain_name'])
+    to_plot = to_plot[::-1]
+    y_pos = range(len(to_plot))
+    x = to_plot.values
+    y_labels = to_plot.index
+
+    # format figure
+    plt.figure(figsize=(7, fig_height))
+    ax = plt.axes([.1,.1,.8,.65])
+    ax.set_frame_on(False)
+
+    # plot data
+    bars = ax.barh(y_pos, width=x, height=.8, color='green', alpha=0.7)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(y_labels)
+    plt.tick_params(axis='y', which='both', bottom='off', top='off',
+                    left='off', right='off', labelleft='off', labelright='off',
+                    labelsize=18, labelcolor='green')
+    plt.tick_params(axis='x', which='both', bottom='off', top='off',
+                    left='off', right='off', labelbottom='off',
+                    labelsize=18, labelcolor='green')
+
+    # color bars with negative values gray
+    for i, bar in enumerate(bars):
+        if x[i] < 0:
+            bar.set_color('gray')
+            bar.set_alpha(0.7)
+
+    # label bars
+    xmin, xmax = ax.get_xlim()
+    buffer = max(abs(xmin), abs(xmax)) * 0.05
+    for i, label in enumerate(y_labels):
+        if x[i] >= 0:
+            plt.text(-buffer, y_pos[i], label, color='green',
+                     fontsize=14, ha='right', va='center')
+        else:
+            plt.text(buffer, y_pos[i], label, color='gray',
+                     fontsize=14, ha='left', va='center')
+
+    # title, subtitle and footnote
+    tt, sb, ft = title_subtitle_footnote(results_df)
+    plt.figtext(0.5, 0.85, tt, ha='center', fontsize=16)
+    plt.figtext(0.5, 0.80, sb, ha='center', fontsize=14)
+    plt.figtext(0.5, 0.0, ft, ha='center', fontsize=12)
+
 
     plt.show()
