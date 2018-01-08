@@ -11,11 +11,11 @@ from palettable.colorbrewer.sequential import (Greens_5, Greens_9,
     Greys_5, Greys_9, Purples_5, Purples_9)
 
 import trend_analysis as ta
-from trend_analysis import StrainSalesDF # converts single strain data to df
-from trend_analysis import StrainTrendsDF # transforms single strain data
-from trend_analysis import StrainStatsDF # compiles stats for multiple strains
-from trend_analysis import CompTrendsDF # compares strains by ts data
-from trend_analysis import RankStrains # returns ranked results
+from trend_analysis import ImportSalesData # converts single product data to df
+from trend_analysis import ProductTrendsDF # transforms single product data
+from trend_analysis import ProductStatsDF # compiles stats for multiple products
+from trend_analysis import CompTrendsDF # compares products by ts data
+from trend_analysis import RankProducts # returns ranked results
 
 
 """Graphic design adapted from: http://www.randalolson.com/2014/06/28/how-to-make-beautiful-data-visualizations-in-python-with-matplotlib/
@@ -144,7 +144,7 @@ def parse_title(str):
 
 
 def title_subtitle_footnote(results_df):
-    """Take in RankStrains.results object; return title, subtitle and
+    """Take in RankProducts.results object; return title, subtitle and
     footnote for graphs"""
     name_str = results_df.name
     stat_str = results_df.columns[2]
@@ -272,7 +272,7 @@ def write_file_name(df):
 
 """
 ~~~~~~~~~~~~~~~~~~~~~~~
-Line Plot of Strains over Uniform Trend Parameters
+Line Plot of Products over Uniform Trend Parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 """
@@ -352,13 +352,13 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
     ax.xaxis.set_minor_locator(plt.MultipleLocator(7)) # 7 days
 
     # plot data
-    strains = list(df.columns)
-    for i, strain in enumerate(strains):
+    products = list(df.columns)
+    for i, product in enumerate(products):
         ci = i % len(colors) # revolving index for colors
-        plt.plot(df[strain], lw=2.5, color=colors[ci])
-        y_pos = df[strain].values[-1]
-        if not legend: # strain labels at line ends
-            plt.text(idx[-1] + pd.DateOffset(1), y_pos, strain, fontsize=16,
+        plt.plot(df[product], lw=2.5, color=colors[ci])
+        y_pos = df[product].values[-1]
+        if not legend: # product labels at line ends
+            plt.text(idx[-1] + pd.DateOffset(1), y_pos, product, fontsize=16,
                     color=colors[ci], va='center')
 
     # format optional legend
@@ -390,25 +390,26 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
 
 """
 ~~~~~~~~~~~~~~~~~~~~~~~
-Horizontal Bar Chart of Strains Ranked by Statistic(s)
+Horizontal Bar Chart of Products Ranked by Statistic(s)
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 """
 
-def PlotRankedStrains(results_df, fig_height=7, round_to_int=False, millions=False,
+def PlotRankedProducts(results_df, fig_height=7, round_to_int=False, millions=False,
         in_bar=False, data_buff=5, label_buff=40, write_path=None):
     """
-    Input: RankStrains.results object (pandas DataFrame)
-    Output: Horizontal bar graph showing strains ranked by statistic
+    Input: RankProducts.results object (pandas DataFrame)
+    Output: Horizontal bar graph showing products ranked by statistic
     """
     # prepare data series
     to_plot = pd.Series(results_df.iloc[:,-1].values,
-                        index=results_df['strain_name'])
+                        index=results_df['product_name'])
     to_plot = to_plot[::-1]
     y_pos = range(len(to_plot))
     x = to_plot.values
     y_labels = to_plot.index
     stat_str = results_df.columns[2]
+    greys = rescale_RGB(Greys_9.colors)
 
     # format figure
     plt.figure(figsize=(7, fig_height), facecolor=greys[1])
