@@ -2,15 +2,15 @@
 UTILITIES FOR SALES TREND ANALYSIS
 
 CLASSES:
- -- StrainSalesDF(strain_id)
- -- StrainTrendsDF(ts, period_wks, end_date=None, MA_params=None,
+ -- ImportSalesData(product_id)
+ -- ProductTrendsDF(ts, period_wks, end_date=None, MA_params=None,
                    exp_smooth_params=None, normed=True)
- -- RankStrains(strain_stats_df, N_results=None)
+ -- RankProducts(product_stats_df, N_results=None)
 
 MAJOR FUNCTIONS:
- -- StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
+ -- ProductStatsDF(product_IDs, period_wks, end_date=None, MA_params=None,
                    exp_smooth_params=None, normed=True, compute_on_sales=True)
- -- CompTrendsDF(strain_IDs, period_wks, end_date=None, MA_param=None,
+ -- CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
                    exp_smooth_param=None, shifted=False, normed=False,
                    compute_on_sales=True)
 
@@ -30,42 +30,42 @@ import matplotlib.pyplot as plt
 from sqlalchemy import create_engine
 
 
-class StrainSalesDF(object):
+class ImportSalesData(object):
     """
-    Initialize with strain_id (int) then run main() method to populate
-    attributes
+    Query sales data from postgres and import to pandas data objects. Initialize
+    with product_id (int) then run main() method to populate attributes
 
     ATTRIBUTES:
-     -- strain_df: pandas time series (DataFrame) with daily sales in dollars and units
+     -- product_df: pandas time series (DataFrame) with daily sales in dollars and units
      -- sales: pandas time series (Series) of total daily sales
      -- units_sold: pandas time series (Series) of total daily units sold
-     -- strain_id (int)
-     -- strain_name (string)
+     -- product_id (int)
+     -- product_name (string)
 
-    NOTE: DataFrame and Series title strings with strain name and ID may be accessed
+    NOTE: DataFrame and Series title strings with product name and ID may be accessed
         via DataFrame.name and Series.name attributes
     """
 
-    def __init__(self, strain_id):
-        self.strain_id = strain_id
-        self.strain_name = None
+    def __init__(self, product_id):
+        self.product_id = product_id
+        self.product_name = None
         self._query = None
         self._connection_str = 'postgresql:///uplift'
         self._conn = None
-        self.strain_df = None
+        self.product_df = None
         self.sales = None
         self.units_sold = None
 
     def main(self):
-        self._query_strain_sales()
+        self._query_product_sales()
         self._connect_to_postgres()
         self._SQL2pandasdf()
 
-    def _query_strain_sales(self):
+    def _query_product_sales(self):
         self._query = ("""
         SELECT CAST(DATE_TRUNC('day', ds.date_of_sale) AS DATE) as date
-         , st.strain_display_name as strain_name
-         , st.generic_strain_id as strain_id
+         , st.strain_display_name as product_name
+         , st.generic_strain_id as product_id
          , ROUND(SUM(ds.retail_price)) as ttl_sales
          , ROUND(SUM(ds.retail_units)) as ttl_units_sold
         FROM daily_retail_sales ds
@@ -74,34 +74,34 @@ class StrainSalesDF(object):
         WHERE st.generic_strain_id = {}
         GROUP BY date, st.strain_display_name, st.generic_strain_id
         ORDER BY date;
-        """).format(self.strain_id)
+        """).format(self.product_id)
 
     def _connect_to_postgres(self):
         self._conn = create_engine(self._connection_str)
 
     def _SQL2pandasdf(self):
         raw_df = pd.read_sql_query(self._query, self._conn)
-        self.strain_df = pd.DataFrame(raw_df[['ttl_sales', 'ttl_units_sold']])
-        self.strain_df.index = pd.DatetimeIndex(raw_df['date'])
-        self.strain_name = raw_df['strain_name'].unique()[0]
-        df_name = '{} (ID: {})'.format(self.strain_name, self.strain_id)
-        self.strain_df.name = df_name
+        self.product_df = pd.DataFrame(raw_df[['ttl_sales', 'ttl_units_sold']])
+        self.product_df.index = pd.DatetimeIndex(raw_df['date'])
+        self.product_name = raw_df['product_name'].unique()[0]
+        df_name = '{} (ID: {})'.format(self.product_name, self.product_id)
+        self.product_df.name = df_name
 
-        self.sales = self.strain_df['ttl_sales']
+        self.sales = self.product_df['ttl_sales']
         self.sales.name = df_name + ' -- Daily Sales'
 
-        self.units_sold = self.strain_df['ttl_units_sold']
+        self.units_sold = self.product_df['ttl_units_sold']
         self.units_sold.name = df_name + ' -- Daily Units Sold'
 
 
 
-class StrainTrendsDF(object):
-    """Convert raw time series sales or unit-sales data for a single strain into
+class ProductTrendsDF(object):
+    """Convert raw time series sales or unit-sales data for a single product into
     engineered trend data, including rolling averages and exponentially smoothed
     trends for both absolute and normalized (rescaled) values.
 
     INPUT:
-     -- ts: StrainSalesDF.sales or .units_sold object (pandas Series)
+     -- ts: ImportSalesData.sales or .units_sold object (pandas Series)
      -- period_wks: (int) date span in weeks measured back from most recent datum,
           used to define sampling period
      -- end_date: (date string of form: '07/15/2016', default=None) alternative
@@ -110,7 +110,7 @@ class StrainTrendsDF(object):
           windows, in weeks, by which to generate distinct columns of moving-
           average data
      -- exp_smooth_params: (list of floats, default=None) one or more alpha
-          smoothing factors (0 < alpha < 1)by which to generate distinct columns
+          smoothing factors (0 < alpha < 1) by which to generate distinct columns
           of exponentially smoothed data
      -- normed: (bool, default=True) add a column for each moving-average or
           exponentially smoothed column that computes on data rescaled (-1, 1)
@@ -120,14 +120,14 @@ class StrainTrendsDF(object):
      -- trendsDF: (pandas DataFrame)
      -- trend_stats: (OrderedDict) aggregate statistics, single record for insertion
           into comparison DF
-     -- strain_name: (str) extracted from ts.name
-     -- strain_ID: (int) extracted from ts.name
+     -- product_name: (str) extracted from ts.name
+     -- product_ID: (int) extracted from ts.name
      -- sales_col_name: (str) either 'daily sales' or 'daily units sold', extracted
           from ts.name
 
     METHODS:
      -- main(): run after initialization to populate trendsDF
-     -- aggregate_stats(): populates trend_stats containing record for strain
+     -- aggregate_stats(): populates trend_stats containing record for product
           aggregated from trendsDF object
      -- norm_Series(col): rescales (-1, 1) and shifts selected data column
      -- trend_AUC(ts): computes area under curve for time series
@@ -145,8 +145,8 @@ class StrainTrendsDF(object):
         self.MA_params = MA_params
         self.exp_smooth_params = exp_smooth_params
         self.normed = normed
-        self.strain_name = self.ts.name.split('(')[0].strip()
-        self.strain_ID = int(self.ts.name.split(')')[0].split(' ')[-1])
+        self.product_name = self.ts.name.split('(')[0].strip()
+        self.product_ID = int(self.ts.name.split(')')[0].split(' ')[-1])
         self.sales_col_name = self.ts.name.split(' -- ')[-1]
         self.ts_sample = None
         self.trendsDF = None
@@ -191,14 +191,15 @@ class StrainTrendsDF(object):
                 self.trendsDF[normed_col_name] = \
                     self.norm_Series(self.trendsDF[col_name])
                     # This takes the shifted MA values that start with zero,
-                    #  rescales them (-1, 1), then shifts them again to zero.
+                    #  rescales them (-50, 50), then shifts them again to zero
+                    #  resuling in a data range of (-100, 100).
 
 
     def aggregate_stats(self):
-        """Construct trend_stats from trendsDF: output is a dictionary for appending
-        to list of dicts as input for pandas DF"""
-        self.trend_stats['strain_name'] = self.strain_name
-        self.trend_stats['strain_id'] = self.strain_ID
+        """Compute statistics on each data column and output as a dictionary
+        trend_stats attribute"""
+        self.trend_stats['product_name'] = self.product_name
+        self.trend_stats['product_id'] = self.product_ID
         self.trend_stats['cumulative ' + self.sales_col_name.lower()] = \
             sum(self.trendsDF[self.trendsDF.columns[0]])
         if 'units' in self.sales_col_name.lower():
@@ -210,7 +211,7 @@ class StrainTrendsDF(object):
             if 'NORMD' in column:
                 self.trend_stats[column + ' AUC'] = \
                     self.trend_AUC(self.trendsDF[column])
-                self.trend_stats[column + ' SLOPE'] = \
+                self.trend_stats[column + ' growth rate'] = \
                     self.compute_aggr_slope(self.trendsDF[column])
 
             elif 'SHIFTED' in column:
@@ -244,8 +245,8 @@ class StrainTrendsDF(object):
             ending = self.end_date
 
         DF_name = ('{} (ID: {}) Trends in {} over {} Weeks Ending {}').format(
-            self.strain_name,
-            self.strain_ID,
+            self.product_name,
+            self.product_ID,
             self.sales_col_name,
             self.period_wks,
             ending
@@ -254,12 +255,12 @@ class StrainTrendsDF(object):
 
 
     def norm_Series(self, col):
-        """Returns time series rescaled then shifted such that t0 = 0
-        NOTE: Due to shifting, some normed values may exceed the feature range (-1, 1)
+        """Return time series rescaled then shifted such that t0 = 0 and values
+        range from (-100, 100)
         """
         values = col.values
         values = values.reshape(-1,1)
-        scaler = MinMaxScaler(feature_range=(-1,1))
+        scaler = MinMaxScaler(feature_range=(-50,50))
         scaler = scaler.fit(values)
         scaled_vals = scaler.transform(values).flatten()
         normed_trend = pd.Series(scaled_vals - scaled_vals[0], index=col.index)
@@ -294,13 +295,13 @@ class StrainTrendsDF(object):
 
 
 
-def StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
+def ProductStatsDF(product_IDs, period_wks, end_date=None, MA_params=None,
                   exp_smooth_params=None, normed=True, compute_on_sales=True):
     """Construct DataFrame showing comparative sales stats among multiple products.
     See output DataFrame.name attribute for title.
 
     ARGUMENTS:
-     -- strain_IDs: (list of ints) list of strain IDs for statistical comparison
+     -- product_IDs: (list of ints) list of product IDs for statistical comparison
      -- period_wks: (int) sampling period in weeks
 
      OPTIONAL
@@ -320,37 +321,38 @@ def StrainStatsDF(strain_IDs, period_wks, end_date=None, MA_params=None,
     data = []
     counter = 0
     df_name = None
-    for strain in strain_IDs:
-        raw_data = StrainSalesDF(strain)
+    for product in product_IDs:
+        raw_data = ImportSalesData(product)
         raw_data.main()
         if compute_on_sales:
             ts = raw_data.sales
         else:
             ts = raw_data.units_sold
-        trends_data = StrainTrendsDF(ts, period_wks, end_date, MA_params,
+        trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
                                      exp_smooth_params, normed)
         trends_data.main()
         data.append(trends_data.trend_stats)
-        if counter < 1:
+
+        if counter < 1: # first loop, extract df name from ProductTrendsDF
             df_name = trends_data.trendsDF.name.split(') ')[1]
         counter += 1
 
-    strain_stats_df = pd.DataFrame(data, columns=data[0].keys())
-    strain_stats_df.name = df_name
-    return strain_stats_df
+    product_stats_df = pd.DataFrame(data, columns=data[0].keys())
+    product_stats_df.name = df_name
+    return product_stats_df
 
 
 
-def CompTrendsDF(strain_IDs, period_wks, end_date=None, MA_param=None,
+def CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
                   exp_smooth_param=None, shifted=False, normed=False,
                   compute_on_sales=True):
-    """Construct DataFrame with time series across multiple strains. Default
+    """Construct DataFrame with time series across multiple products. Default
     arguments return a DataFrame with time series of raw sales data. Otherwise,
     assign value to either MA_param= or exp_smooth_param= (NOT BOTH). Optionally
     may assign True to either shifted= or normed= arguments (NOT BOTH).
 
     ARGUMENTS:
-     -- strain_IDs: (list of ints) list of strain IDs for comparison
+     -- product_IDs: (list of ints) list of product IDs for comparison
      -- period_wks: (int) sampling period in weeks
      -- end_date: (date string: '07/15/2016', default=None) date string defining
           end of sampling period. Default uses most recent date.
@@ -368,30 +370,29 @@ def CompTrendsDF(strain_IDs, period_wks, end_date=None, MA_param=None,
     col_index = column_sel(MA_param, exp_smooth_param, shifted, normed)
     if MA_param:
         A = '{}-Week Moving Average of '.format(MA_param) # DF title element
-        MA_param = [MA_param] # insert single param to list for StrainTrendsDF class
+        MA_param = [MA_param] # insert single param to list for ProductTrendsDF class
     if exp_smooth_param:
         B = ', Exponentially Smoothed (alpha: {})'.format(exp_smooth_param)
         exp_smooth_param = [exp_smooth_param]
     counter = 0
 
-    for strain in strain_IDs:
-        # Construct base dataframe from first strain
-        if counter < 1:
-            stage_1 = StrainSalesDF(strain)
+    for product in product_IDs:
+        if counter < 1: # Construct base dataframe from first product
+            stage_1 = ImportSalesData(product)
             stage_1.main()
             if compute_on_sales:
                 stage_1_ts = stage_1.sales
             else:
                 stage_1_ts = stage_1.units_sold
 
-            stage_2 = StrainTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
+            stage_2 = ProductTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
                             exp_smooth_param, normed)
             stage_2.main()
             seed_df = stage_2.trendsDF
 
             # Construct comp_trends_df title
             C = ', Data Shifted t0=0'
-            D = ', Data Rescaled (-1, 1) and Shifted (t0=0)'
+            D = ', Data Rescaled (-50, 50) then Shifted (t0=0)'
             E = seed_df.name.split('in ')[1]
             if col_index == 0:
                 title = E
@@ -408,27 +409,26 @@ def CompTrendsDF(strain_IDs, period_wks, end_date=None, MA_param=None,
             if col_index == 3 and exp_smooth_param and normed:
                 title = E + B + D
 
-            col_name = [stage_2.strain_name]
+            col_name = [stage_2.product_name]
             comp_trends_df = pd.DataFrame(seed_df[seed_df.columns[col_index]])
-            comp_trends_df.columns = [stage_2.strain_name]
+            comp_trends_df.columns = [stage_2.product_name]
             comp_trends_df.name = title
             counter += 1
 
-        # Populate dataframe with remaining strain trends
-        else:
-            stage_1 = StrainSalesDF(strain)
+        else:  # Populate dataframe with remaining product trends
+            stage_1 = ImportSalesData(product)
             stage_1.main()
             if compute_on_sales:
                 stage_1_ts = stage_1.sales
             else:
                 stage_1_ts = stage_1.units_sold
 
-            stage_2 = StrainTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
+            stage_2 = ProductTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
                             exp_smooth_param, normed)
             stage_2.main()
             source_df = stage_2.trendsDF
 
-            comp_trends_df[stage_2.strain_name] = source_df.iloc[:,col_index]
+            comp_trends_df[stage_2.product_name] = source_df.iloc[:,col_index]
 
 
     return comp_trends_df
@@ -449,22 +449,22 @@ def column_sel(MA_param=None, exp_smooth_param=None, shifted=False, normed=False
         return 3
 
 
-class RankStrains(object):
-    """Initialize with StrainStatsDF object and (optionally) by number of top
-    results desired; Rank strains/products by user_selected statistic
+class RankProducts(object):
+    """Initialize with ProductStatsDF object and (optionally) by number of top
+    results desired; Rank products by user_selected statistic
 
     METHOD:
-     -- main(): Rank strains and populate attributes
+     -- main(): Rank products and populate attributes
 
     ATTRIBUTES:
-     -- results: pandas DataFrame of strains ranked by selected statistic
-     -- ranked_IDs: numpy array of ranked strain IDs
-     -- ranked_df: same as RankStrains.results but including all other statistics
+     -- results: pandas DataFrame of products ranked by selected statistic
+     -- ranked_IDs: numpy array of ranked product IDs
+     -- ranked_df: same as RankProducts.results but including all other statistics
 
     """
 
-    def __init__(self, strain_stats_df, N_results=None):
-        self.strain_stats_df = strain_stats_df
+    def __init__(self, product_stats_df, N_results=None):
+        self.product_stats_df = product_stats_df
         self.N_results = N_results
         self.results = None
         self.ranked_IDs = None
@@ -472,33 +472,33 @@ class RankStrains(object):
 
 
     def main(self):
-        "Rank N-top strains by user-selected statistic; output in pandas DataFrame"
+        "Rank N-top products by user-selected statistic; output in pandas DataFrame"
         stat_idx = self._sel_rank_by()
-        stat_col = self.strain_stats_df.columns[stat_idx]
-        output_cols = list(self.strain_stats_df.columns)
+        stat_col = self.product_stats_df.columns[stat_idx]
+        output_cols = list(self.product_stats_df.columns)
         output_cols.remove(stat_col)
         output_cols.insert(2, stat_col)
 
-        ranked = self.strain_stats_df.sort_values(by=stat_col, ascending=False)
+        ranked = self.product_stats_df.sort_values(by=stat_col, ascending=False)
         ranked.index = range(1, len(ranked.index) + 1)
 
         if self.N_results:
             self.ranked_df = ranked[output_cols][:self.N_results]
-            self.ranked_IDs = self.ranked_df['strain_id'].values
+            self.ranked_IDs = self.ranked_df['product_id'].values
             self.results = self.ranked_df.iloc[:,:3]
         else:
             self.ranked_df = ranked[output_cols]
-            self.ranked_IDs = self.ranked_df['strain_id'].values
+            self.ranked_IDs = self.ranked_df['product_id'].values
             self.results = self.ranked_df.iloc[:,:3]
 
-        self.results.name = self.strain_stats_df.name
-        self.ranked_df.name = self.strain_stats_df.name + \
+        self.results.name = self.product_stats_df.name
+        self.ranked_df.name = self.product_stats_df.name + \
                 ', Ranked by {}'.format(stat_col)
 
 
     def _sel_rank_by(self):
         "Prompt user for column for ranking; return its index"
-        cols = self.strain_stats_df.columns[2:]
+        cols = self.product_stats_df.columns[2:]
         index = range(1, len(cols) + 1)
         menu = dict(zip(index, cols))
         for k, v in menu.iteritems():
@@ -514,20 +514,20 @@ A LA CARTE FUNCTIONS
 """
 
 
-def rank_strains(strain_stats_df, N_results=None):
-    "Rank N-top strains by user-selected statistic; output in pandas DataFrame"
-    stat_idx = sel_rank_by(strain_stats_df)
-    stat_col = strain_stats_df.columns[stat_idx]
-    ranked_df = strain_stats_df.sort_values(by=stat_col, ascending=False)
+def rank_products(product_stats_df, N_results=None):
+    "Rank N-top products by user-selected statistic; output in pandas DataFrame"
+    stat_idx = sel_rank_by(product_stats_df)
+    stat_col = product_stats_df.columns[stat_idx]
+    ranked_df = product_stats_df.sort_values(by=stat_col, ascending=False)
     if N_results:
-        return ranked_df[['strain_name', 'strain_id', stat_col]][:N_results]
+        return ranked_df[['product_name', 'product_id', stat_col]][:N_results]
     else:
-        return ranked_df[['strain_name', 'strain_id', stat_col]]
+        return ranked_df[['product_name', 'product_id', stat_col]]
 
 
-def sel_rank_by(strain_stats_df):
+def sel_rank_by(product_stats_df):
     "Prompt user for column for ranking; return its index"
-    cols = strain_stats_df.columns[2:]
+    cols = product_stats_df.columns[2:]
     index = range(1, len(cols) + 1)
     menu = dict(zip(index, cols))
     for k, v in menu.iteritems():
@@ -587,7 +587,7 @@ def trend_AUC(ts, normalize=False):
         return np.trapz(values)
 
 def add_rolling_avg_col(df, window_wks, data_col='ttl_sales'):
-    """Add rolling average column to StrainSalesDF.strain_df object"""
+    """Add rolling average column to ImportSalesData.product_df object"""
     boxcar = window_wks * 7
     col = 'rolling_{}wk'.format(window_wks)
     df[col] = df[data_col].rolling(window=boxcar).mean()
@@ -597,26 +597,26 @@ def add_rolling_avg_col(df, window_wks, data_col='ttl_sales'):
 if __name__=='__main__':
 
     """Set input variables"""
-    strains = range(1, 10) # list of strain IDs
+    products = range(1, 10) # list of product IDs
     MAs = [5] # list of moving average window(s) in weeks
     sample_period = 20 # in weeks
 
-    """Run StrainSalesDF method and access class attributes"""
-    strain_3 = StrainSalesDF(3)
-    strain_3.main()
-    raw_df_3 = strain_3.strain_df # DataFrame of daily sales and units for strain
-    sales_3 = strain_3.sales # time series (pd.Series) of daily sales
-    units_3 = strain_3.units_sold # time Series of daily units sold
+    """Run ImportSalesData method and access class attributes"""
+    product_3 = ImportSalesData(3)
+    product_3.main()
+    raw_df_3 = product_3.product_df # DataFrame of daily sales and units for product
+    sales_3 = product_3.sales # time series (pd.Series) of daily sales
+    units_3 = product_3.units_sold # time Series of daily units sold
 
-    """Run StrainTrendsDF method and access class attributes"""
-    trends_3 = StrainTrendsDF(sales_3, sample_period, MA_params=MAs)
+    """Run ProductTrendsDF method and access class attributes"""
+    trends_3 = ProductTrendsDF(sales_3, sample_period, MA_params=MAs)
     trends_3.main()
     trends_df_3 = trends_3._trendsDF # DataFrame with columns of transformed data
-    stats_3 = trends_3.trend_stats # Single record (OrderedDict) of stats for strain
+    stats_3 = trends_3.trend_stats # Single record (OrderedDict) of stats for product
 
-    """Run StrainStatsDF function to generate comparative stats DF; Builds DF from
-    individual records in the form of StrainTrendsDF.trend_stats objects"""
-    comps_df = StrainStatsDF(strains, sample_period, MA_params=MAs)
+    """Run ProductStatsDF function to generate comparative stats DF; Builds DF from
+    individual records in the form of ProductTrendsDF.trend_stats objects"""
+    comps_df = ProductStatsDF(products, sample_period, MA_params=MAs)
 
     """Print various attributes (names, DFs, Series) to test pipeline"""
     print(raw_df_3.name)
