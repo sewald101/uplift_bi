@@ -402,7 +402,7 @@ def PlotRankedProducts(results_df, fig_height=7, round_to_int=False, millions=Fa
     Output: Horizontal bar graph showing products ranked by statistic
     """
     # prepare data series
-    to_plot = pd.Series(results_df.iloc[:,-1].values,
+    to_plot = pd.Series(results_df.iloc[:,2].values,
                         index=results_df['product_name'])
     to_plot = to_plot[::-1]
     y_pos = range(len(to_plot))

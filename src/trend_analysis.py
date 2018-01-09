@@ -471,10 +471,27 @@ class RankProducts(object):
         self.ranked_df = None
 
 
-    def main(self):
-        "Rank N-top products by user-selected statistic; output in pandas DataFrame"
-        stat_idx = self._sel_rank_by()
-        stat_col = self.product_stats_df.columns[stat_idx]
+    def main(self, stat=None):
+        """Rank N-top products by a user-selected statistic specified either by
+        optional stat argument or manualy by raw input; output class attributes:
+        results, ranked_IDs and ranked_df
+
+        ARGUMENT: stat (string), select exacly one or none
+          * 'rate' = growth rate index for products with data
+              normalized (rescaled -100, 100) for sales volumes
+          * 'gain' = uniform weekly gain or loss over period
+          * 'sales' = cumulative sales over period
+
+        """
+        if stat:
+            cols = self.product_stats_df.columns
+            for i, c in enumerate(cols):
+                if stat in c:
+                    stat_idx = i
+                    stat_col = c
+        else:
+            stat_idx = self._sel_rank_by()
+            stat_col = self.product_stats_df.columns[stat_idx]
         output_cols = list(self.product_stats_df.columns)
         output_cols.remove(stat_col)
         output_cols.insert(2, stat_col)
