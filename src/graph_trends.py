@@ -143,11 +143,11 @@ def parse_title(str):
     return (A, B)
 
 
-def title_subtitle_footnote(results_df):
+def title_subtitle_footnote(ranked_df):
     """Take in RankProducts.results object; return title, subtitle and
     footnote for graphs"""
-    name_str = results_df.name
-    stat_str = results_df.columns[2]
+    name_str = ranked_df.name
+    stat_str = ranked_df.columns[2]
     title, subtitle, footnote = None, None, None
 
     # string elements
@@ -395,20 +395,20 @@ Horizontal Bar Chart of Products Ranked by Statistic(s)
 
 """
 
-def PlotRankedProducts(results_df, fig_height=7, round_to_int=False, millions=False,
+def PlotRankedProducts(ranked_df, fig_height=7, round_to_int=False, millions=False,
         in_bar=False, data_buff=5, label_buff=40, write_path=None):
     """
-    Input: RankProducts.results object (pandas DataFrame)
+    Input: RankProducts.ranked_df object (pandas DataFrame)
     Output: Horizontal bar graph showing products ranked by statistic
     """
     # prepare data series
-    to_plot = pd.Series(results_df.iloc[:,2].values,
-                        index=results_df['product_name'])
+    to_plot = pd.Series(ranked_df.iloc[:,2].values,
+                        index=ranked_df['product_name'])
     to_plot = to_plot[::-1]
     y_pos = range(len(to_plot))
     x = to_plot.values
     y_labels = to_plot.index
-    stat_str = results_df.columns[2]
+    stat_str = ranked_df.columns[2]
     greys = rescale_RGB(Greys_9.colors)
 
     # format figure
@@ -427,7 +427,7 @@ def PlotRankedProducts(results_df, fig_height=7, round_to_int=False, millions=Fa
     ax.spines['left'].set_visible(False)
 
     # title, subtitle and footnote
-    tt, sb, ft = title_subtitle_footnote(results_df)
+    tt, sb, ft = title_subtitle_footnote(ranked_df)
     plt.figtext(-0.0, 0.85, tt, ha='left', fontsize=16, fontweight='bold')
     if sb: plt.figtext(-0.0, 0.80, sb, ha='left', fontsize=14)
     if ft: plt.figtext(-0.0, 0.0, ft, ha='left', fontsize=10)
@@ -456,7 +456,7 @@ def PlotRankedProducts(results_df, fig_height=7, round_to_int=False, millions=Fa
 
             # xtick formating (must follow plot data)
         #     x_tix = ax.get_xticks()
-        #     stat_str = results_df.columns[2]
+        #     stat_str = ranked_df.columns[2]
         #     if currency_bool(stat_str):
         #         plt.xticks(x_tix, [format_currency(tick) for tick in x_tix])
         #     else:
@@ -519,4 +519,129 @@ def PlotRankedProducts(results_df, fig_height=7, round_to_int=False, millions=Fa
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25)
 
+    plt.show()
+
+
+def get_data(product_IDs, period_wks=10, end_date=None,
+               rank_on_sales=True, MA=5,
+               rank_by=['rate'], fixed_order=True):
+    """Return a dataframe configured for custom plotting in HbarRanked function"""
+    prod_stats = ProductStatsDF(product_IDs, period_wks, end_date,
+                MA_params=[MA], compute_on_sales=rank_on_sales)
+
+    if len(rank_by) < 2 or fixed_order: # just need the RankProducts.results object
+        if len(rank_by) < 2:
+            rank_1 = RankProducts(prod_stats)
+            rank_1.main(rank_by[0])
+            data = rank_1.results
+            data.drop(['product_id'], axis=1, inplace=True)
+
+        else:
+            rank_1 = RankProducts(prod_stats)
+            rank_1.main(rank_by[0])
+            all_data = rank_1.ranked_df
+            df_cols = all_data.columns
+            cols = []
+            for stat in rank_by:
+                cols.append('product_name')
+                cols.append(grab_column(stat))
+
+            data = all_data[cols]
+
+
+    if len(rank_by) > 1 and not fixed_order:
+            rank_1 = RankProducts(prod_stats)
+            rank_1.main(rank_by[0])
+            data = rank_1.results
+
+            for i, stat in enumerate(rank_by[1:]):
+                rank_next = RankProducts(prod_stats)
+                rank_next.main(stat)
+                next_ranked = rank_next.results
+                data['Ranking By {}'.format(stat)] = next_ranked.iloc[:,0].values
+                data[next_ranked.columns[-1]] = next_ranked.iloc[:,-1].values
+
+            data.drop(['product_id'], axis=1, inplace=True)
+
+    return data[::-1] # reverse row order for matplotlib bar graphing
+
+
+def grab_column(stat):
+    """Get column title string from df.columns = df_cols"""
+    for c in df_cols:
+        if stat in c:
+            return c
+
+def hide_spines(ax):
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+
+
+def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
+           rank_on_sales=True, MA_param=5, rank_by=['rate'],
+           fixed_order=True, fig_height=4, label_buffs=[4,5,5],
+           x_buff=0.005, write_path=None):
+    """
+    ARGUMENTS:
+     -- product_IDs: (list of ints) products for ranking
+     -- period_wks: (int, default=10) sample period for time series in weeks
+     -- end_date: (date string: '07/15/2016', default=None) date string defining
+          end of sampling period. Default uses most recent date in dataset.
+     -- rank_on_sales: (bool, default=True) ranks on sales data; if False,
+          ranks on units sold data
+     -- MA_param: (int) return dataframe of moving averages; int defines "boxcar"
+          window, in weeks, by which to compute moving average
+     -- rank_by: (list of strings, default=['rate']) select statistic
+          by which to rank products in the primary and optional secondary
+          graphs in order of statistic. Values:
+          * 'rate' = growth rate index for products with data
+              normalized (rescaled -100, 100) for sales volumes
+          * 'gain' = uniform weekly gain or loss over period
+          * 'sales' = cumulative sales over period
+     -- fixed_order: (bool, default=True) only rank products in the primary
+          graph and maintain that rank-order in secondary graphs; if False,
+          rank products in each graph
+     -- write_path: (str, default=None) write graph to 'path/file'
+
+    """
+
+    # Construct dataframe for graph(s)
+    df = get_data(product_IDs, period_wks, end_date=end_date,
+               rank_on_sales=rank_on_sales, MA=MA_param,
+               rank_by=rank_by, fixed_order=fixed_order)
+
+    # Configure subplots
+    fig, axs = plt.subplots(1, len(rank_by), figsize=(8*len(rank_by), fig_height), squeeze=False)
+    plt.suptitle('Figure Title', x=0, y=0.98, fontsize=20, fontweight='bold', horizontalalignment='left')
+    plt.figtext(0, 0.86, 'Figure Subtitle', fontsize=16, fontweight='normal', horizontalalignment='left')
+
+    y_pos = range(len(df)) # positions for horizontal bars and product labels
+
+    for i, ax in enumerate(axs.flatten()):
+
+        # format plot title
+        ax.set_title('Plot{}, {}'.format(i+1, rank_by[i].title()))
+
+        # format y axis
+        y_labels = df.iloc[:,(i*2)]
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(y_labels, ha='right', va='center', fontsize=12)
+
+        # get x data
+        x = df.iloc[:,(i*2)+1]
+        buff = x_buff * max(abs(min(x)), max(x))
+        ax.set_xlim(min(x) - buff, max(x) + buff)
+        xmin, xmax = ax.get_xlim()
+
+        # Plot data
+        bars = ax.barh(y_pos, width=x, height=.8, color='green', alpha=0.7)
+        # color bars with negative values gray
+        for j, bar in enumerate(bars):
+            if x.values[j] < 0:
+                bar.set_color('0.5')
+
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=.1, top=.75)
     plt.show()
