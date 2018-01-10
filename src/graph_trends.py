@@ -544,7 +544,7 @@ def get_data(product_IDs, period_wks=10, end_date=None,
             cols = []
             for stat in rank_by:
                 cols.append('product_name')
-                cols.append(grab_column(stat))
+                cols.append(grab_column(df_cols, stat))
 
             data = all_data[cols]
 
@@ -566,8 +566,8 @@ def get_data(product_IDs, period_wks=10, end_date=None,
     return data[::-1] # reverse row order for matplotlib bar graphing
 
 
-def grab_column(stat):
-    """Get column title string from df.columns = df_cols"""
+def grab_column(df_cols, stat):
+    """Get column title string from dataframe"""
     for c in df_cols:
         if stat in c:
             return c
