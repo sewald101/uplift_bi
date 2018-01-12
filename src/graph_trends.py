@@ -227,13 +227,13 @@ def format_currency(x, dollars=False, millions=False):
             return '-${:.2f}'.format(abs(x))
 
 
-def format_units(x, round_to_int=False, millions=False):
+def format_units(x, round_to_int=False, millions=False, decimals=2):
     if millions:
         return '{:.1f}M'.format(x * 1e-6)
     if round_to_int:
         return '{:,}'.format(int(round(x, 0)))
     else:
-        return '{:.2f}'.format(x)
+        return '{:.decimalsf}'.format(x)
 
 
 def data_pos(data, xmin, xmax, buffer=5, in_bar=False):
@@ -577,6 +577,45 @@ def hide_spines(ax):
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
+
+
+def loc_format_value_label(x_arr, threshold=6, offset=0.02):
+    """Return tuple (position, alignment, color) of value labels based on
+    x values
+    ARGUMENTS:
+     -- x_arr: array-like, x-data
+     -- threshold: (int or float, default=6) divisor of maximum abs x-value
+          used to set threshold for whether value labels appear inside or
+          outside of bars
+     -- offset: (float, default=0.02) fraction of max, abs x-value by which
+         to offset labels from bar caps
+
+    """
+    x_scale = max(abs(min(x_arr)), abs(max(x_arr)))
+    gap = offset * x_scale
+    pos, aligns, color = [], [], []
+    for x in x_arr:
+        if x > x_scale / float(threshold):
+            pos.append(x - gap)
+            aligns.append('right')
+            color.append('white')
+            continue
+        if x > 0:
+            pos.append(x + gap)
+            aligns.append('left')
+            color.append('0.3')
+            continue
+        if x > x_scale * -1 / float(threshold):
+            pos.append(x - gap)
+            aligns.append('right')
+            color.append('0.3')
+            continue
+        else:
+            pos.append(x + gap)
+            aligns.append('left')
+            color.append('white')
+
+    return zip(pos, aligns, color)
 
 
 def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
