@@ -227,7 +227,7 @@ def format_currency(x, dollars=False, millions=False):
             return '-${:.2f}'.format(abs(x))
 
 
-def format_units(x, round_to_int=False, millions=False, decimals=2):
+def format_units(x, round_to_int=False, millions=False, decimals=3):
     if millions:
         return '{:.1f}M'.format(x * 1e-6)
     if round_to_int:
@@ -529,6 +529,8 @@ def get_data(product_IDs, period_wks=10, end_date=None,
     prod_stats = ProductStatsDF(product_IDs, period_wks, end_date,
                 MA_params=[MA], compute_on_sales=rank_on_sales)
 
+    base_name = prod_stats.name + ', {}-Week Moving Average'.format(MA)
+
     if len(rank_by) < 2 or fixed_order: # just need the RankProducts.results object
         if len(rank_by) < 2:
             rank_1 = RankProducts(prod_stats)
@@ -563,7 +565,10 @@ def get_data(product_IDs, period_wks=10, end_date=None,
 
             data.drop(['product_id'], axis=1, inplace=True)
 
-    return data[::-1] # reverse row order for matplotlib bar graphing
+    data = data[::-1] # reverse row order for matplotlib bar graphing
+    data.name = base_name
+
+    return data
 
 
 def grab_column(df_cols, stat):

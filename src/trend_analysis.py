@@ -473,8 +473,9 @@ class RankProducts(object):
 
     def main(self, stat=None):
         """Rank N-top products by a user-selected statistic specified either by
-        optional stat argument or manualy by raw input; output class attributes:
-        results, ranked_IDs and ranked_df
+        optional stat argument or manualy by raw input
+
+        OUTPUT: class attributes -- results, ranked_IDs, ranked_df
 
         ARGUMENT: stat (string), select exacly one or none
           * 'rate' = growth rate index for products with data
