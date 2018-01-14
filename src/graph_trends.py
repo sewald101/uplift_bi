@@ -210,17 +210,17 @@ def currency_bool(stat_str):
         return True
 
 
-def format_currency(x, dollars=False, millions=False):
+def format_currency(x, dollars=False, millions=False, decimals=3):
     if x >= 0:
         if millions:
-            return '${:.2f}M'.format(x * 1e-6)
+            return '${:.{prec}f}M'.format(x * 1e-6, prec=decimals)
         if dollars:
             return '${:,}'.format(int(round(x, 0)))
         else:
             return '${:.2f}'.format(x)
     else:
         if millions:
-            return '-${:.2f}M'.format(abs(x * 1e-6))
+            return '-${:.{prec}f}M'.format(abs(x * 1e-6), prec=decimals)
         if dollars:
             return '-${:,}'.format(int(round(abs(x), 0)))
         else:
@@ -229,11 +229,73 @@ def format_currency(x, dollars=False, millions=False):
 
 def format_units(x, round_to_int=False, millions=False, decimals=3):
     if millions:
-        return '{:.1f}M'.format(x * 1e-6)
+        return '{:.{prec}f}M'.format(x * 1e-6, prec=decimals)
     if round_to_int:
         return '{:,}'.format(int(round(x, 0)))
     else:
-        return '{:.decimalsf}'.format(x)
+        return '{:.{prec}f}'.format(x, prec=decimals)
+
+
+def default_data_format(x_arr, curr_bool):
+    """Format data labels based on currency detection and max(abs(x))."""
+    formatted = []
+    max_x = max(max(x_arr), abs(min(x_arr)))
+    if curr_bool:
+        if max_x > 999999:
+            for x in x_arr:
+                formatted.append(format_currency(x, millions=True))
+        elif max_x > 199:
+            for x in x_arr:
+                formatted.append(format_currency(x, dollars=True))
+        else:
+            for x in x_arr:
+                formatted.append(format_currency(x))
+    else:
+        if max_x > 999999:
+            for x in x_arr:
+                formatted.append(format_units(x, millions=True))
+        if max_x > 499:
+            for x in x_arr:
+                formatted.append(format_units(x, round_to_int=True))
+        else:
+            for x in x_arr:
+                formatted.append(format_units(x))
+
+    return formatted
+
+
+def manual_data_format(x_arr, curr_bool, millions_bool=None,
+                        ints_bool=None, dec=3):
+    """Format x_labels according to user specifications"""
+    formatted = []
+    if curr_bool:
+        if millions_bool:
+            for x in x_arr:
+                formatted.append(format_currency(x, millions=True,
+                                                    decimals=dec))
+            return formatted
+        elif ints_bool:
+            for x in x_arr:
+                formatted.append(format_currency(x, dollars=True))
+            return formatted
+        else:
+            for x in x_arr:
+                formatted.append(format_currency(x))
+            return formatted
+    else:
+        if millions_bool:
+            for x in x_arr:
+                formatted.append(format_units(x, millions=True,
+                                                decimals=dec))
+            return formatted
+        if ints_bool:
+            for x in x_arr:
+                formatted.append(format_units(x, round_to_int=True))
+            return formatted
+        else:
+            for x in x_arr:
+                formatted.append(format_units(x, decimals=dec))
+            return formatted
 
 
 def data_pos(data, xmin, xmax, buffer=5, in_bar=False):
@@ -624,9 +686,10 @@ def loc_format_value_label(x_arr, threshold=6, offset=0.02):
 
 
 def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
-           rank_on_sales=True, MA_param=5, rank_by=['rate'],
-           fixed_order=True, fig_height=4, label_buffs=[4,5,5],
-           x_buff=0.005, write_path=None):
+               rank_on_sales=True, MA_param=5, rank_by=['rate'], N_top=3,
+               fixed_order=True, fig_height=4,
+               x_buff=0.005, x_in_bar=6, manual_data_label_format=None,
+               zero_gap=0.00, write_path=None):
     """
     ARGUMENTS:
      -- product_IDs: (list of ints) products for ranking
@@ -644,9 +707,25 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
               normalized (rescaled -100, 100) for sales volumes
           * 'gain' = uniform weekly gain or loss over period
           * 'sales' = cumulative sales over period
+     -- N_top: (int, default=3) highlight N-top results
      -- fixed_order: (bool, default=True) only rank products in the primary
           graph and maintain that rank-order in secondary graphs; if False,
           rank products in each graph
+     -- fig_height: (int, default=4) y-dimension of plt.figure
+     -- x_buff: (float, default=0.005) fraction of maximum absolute x-value
+          by which to set left and right margins of plot around bars
+     -- x_in_bar: (int, default=6) divisor of maximum abs x-value used to set
+          threshold for whether value labels appear outside of bars
+     -- manual_data_label_format: (tuple, default=None) override default x_label
+          formatting with the following ordered values in a tuple:
+          * format as currency (bool)
+          * format in millions (bool)
+          * round_to_int (bool)
+          * precision in decimals (int)
+          example: (True, True, False, 3) formats -1234567 as -$1.234M
+     -- zero_gap: (float, default=0.00) fraction of max abs x_value as width of
+          cosmetic whitespace between zero-line and bars; recommended value
+          if used: 0.01
      -- write_path: (str, default=None) write graph to 'path/file'
 
     """
@@ -656,8 +735,13 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
                rank_on_sales=rank_on_sales, MA=MA_param,
                rank_by=rank_by, fixed_order=fixed_order)
 
+    df_cols = df.columns
+
     # Configure subplots
-    fig, axs = plt.subplots(1, len(rank_by), figsize=(8*len(rank_by), fig_height), squeeze=False)
+    share_bool = 'all' if fixed_order else 'none'
+    fig, axs = plt.subplots(1, len(rank_by), squeeze=False, sharey=share_bool,
+                            figsize=(8*len(rank_by), fig_height),
+                            )
     plt.suptitle('Figure Title', x=0, y=0.98, fontsize=20, fontweight='bold', horizontalalignment='left')
     plt.figtext(0, 0.86, 'Figure Subtitle', fontsize=16, fontweight='normal', horizontalalignment='left')
 
@@ -667,25 +751,72 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
 
         # format plot title
         ax.set_title('Plot{}, {}'.format(i+1, rank_by[i].title()))
+        hide_spines(ax)
+
+        # format plot canvas(es)
+        ax.axvline(0, color='0.2', linewidth=1)
+        if not fixed_order and i != len(rank_by)-1:
+            ax.spines['right'].set_visible('True')
+#         label_bool = 'on' if i==0 or not fixed_order else 'off'
+        ax.tick_params(axis='y', which='both', bottom='off', top='off',
+                left='off', right='off', labelleft='on',
+                labelright='off', labelbottom='off')
+        ax.tick_params(axis='x', which='both', bottom='off', top='off',
+                left='off', right='off', labelleft='off',
+                labelright='off', labelbottom='off')
+        ax.axhline(y_pos[-1] + 0.5, ls='--', lw=0.5, color='0.8')
+        for y in y_pos:
+            ax.axhline(y - 0.5, ls='--', lw=0.5, color='0.8')
 
         # format y axis
         y_labels = df.iloc[:,(i*2)]
         ax.set_yticks(y_pos)
-        ax.set_yticklabels(y_labels, ha='right', va='center', fontsize=12)
+        ax.set_yticklabels(y_labels, ha='right', va='center',
+                           color='0.3', fontsize=12)
 
-        # get x data
+        # get x data and format data labels
         x = df.iloc[:,(i*2)+1]
-        buff = x_buff * max(abs(min(x)), max(x))
+        x_scale = max(abs(min(x)), abs(max(x))) # largest bar
+        buff = x_buff * x_scale
         ax.set_xlim(min(x) - buff, max(x) + buff)
         xmin, xmax = ax.get_xlim()
+        if manual_data_label_format:
+            q = manual_data_label_format
+            x_labels = manual_data_format(x, q[0], q[1], q[2], dec=q[3])
+        else:
+            stat_str = df.columns[(i*2)+1]
+            curr = currency_bool(stat_str)
+            x_labels = default_data_format(x, curr)
+
+        # optional small gap (bar-zero-space, bzs) between bars and zero line
+        gap = zero_gap * x_scale
+        bzs = [gap if val > 0 else -1 * gap for val in x]
 
         # Plot data
-        bars = ax.barh(y_pos, width=x, height=.8, color='green', alpha=0.7)
-        # color bars with negative values gray
-        for j, bar in enumerate(bars):
-            if x.values[j] < 0:
-                bar.set_color('0.5')
+        bars = ax.barh(y_pos, width=x-bzs, left=bzs, height=.8, color='0.5',
+                       alpha=0.7)
+        labels = ax.get_yticklabels()[::-1]
+
+        # Format bars and labels for N-top results
+        if not fixed_order or i==0:
+            for j, bar in enumerate(bars[::-1]):
+                if j < N_top:
+                    bar.set_color('green')
+                    labels[j]
+                    labels[j].set_color('green')
+                    labels[j].set_fontsize(16)
+                    labels[j].set_fontweight('bold')
+
+        # Add value labels to bars
+        val_pos = loc_format_value_label(x, threshold=x_in_bar)
+        for k, tup in enumerate(val_pos):
+            plt.text(tup[0], y_pos[k], x_labels[k],
+                   ha=tup[1], va='center', color=tup[2], fontsize=12)
 
     plt.tight_layout()
     plt.subplots_adjust(bottom=.1, top=.75)
+
+    if write_path:
+        plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
+                   dpi=1000)
     plt.show()
