@@ -486,13 +486,15 @@ class RankProducts(object):
         """
         if stat:
             cols = self.product_stats_df.columns
+            tag = stat if stat != 'sales' else 'cumulative' # bug fix to work with sales or units
             for i, c in enumerate(cols):
-                if stat in c:
+                if tag in c:
                     stat_idx = i
                     stat_col = c
         else:
             stat_idx = self._sel_rank_by()
             stat_col = self.product_stats_df.columns[stat_idx]
+
         output_cols = list(self.product_stats_df.columns)
         output_cols.remove(stat_col)
         output_cols.insert(2, stat_col)

@@ -194,21 +194,6 @@ Data rescaled to (-50, 50) then shifted (t0=0)."""
     return title, subtitle, footnote
 
 
-def currency_bool(stat_str):
-    """Return True if values to be formatted in currency"""
-    if 'cumulative' in stat_str.lower():
-        return True
-    if 'ma log' in stat_str.lower():
-        return False
-    if 'shifted log' in stat_str.lower():
-        return False
-    if 'gain' in stat_str.lower():
-        return True
-    if 'normd auc' in stat_str.lower():
-        return False
-    if 'normd growth' in stat_str.lower():
-        return True
-
 
 def format_currency(x, dollars=False, millions=False, decimals=3):
     if x >= 0:
@@ -254,7 +239,7 @@ def default_data_format(x_arr, curr_bool):
         if max_x > 999999:
             for x in x_arr:
                 formatted.append(format_units(x, millions=True))
-        if max_x > 499:
+        if max_x > 3:
             for x in x_arr:
                 formatted.append(format_units(x, round_to_int=True))
         else:
@@ -316,6 +301,32 @@ def data_pos(data, xmin, xmax, buffer=5, in_bar=False):
                 data_pos.append(x - buff)
 
     return data_pos
+
+
+def axtitle_footnote(rank_by, curr_bool):
+    """Generate tuple (plot title, footnote) for rank-by statistic and currency boolean."""
+    if curr_bool:
+        if rank_by == 'sales':
+            title = u'Cumulative Sales'
+            footnote = None
+        if rank_by == 'rate':
+            title = u'Normalized$^*$Rate of Gain/Loss \nin Daily Sales'
+            footnote = '* Daily sales for each strain rescaled to (-$50, $50) then shifted to t0 = $0.00'
+        if rank_by == 'gain':
+            title = u'Avg Weekly Gain/Loss$^\u2020$ in Sales'
+            footnote = u'\u2020 Measured from baseline t0 = $0.00'
+    else:
+        if rank_by == 'sales':
+            title = u'Cumulative Units Sold'
+            footnote = None
+        if rank_by == 'rate':
+            title = u'Normalized$^*$Rate of Gain/Loss \nin Daily Units Sold'
+            footnote = u'* Daily sales for each strain rescaled to (-50, 50) then shifted to t0 = 0 units.'
+        if rank_by == 'gain':
+            title = u'Avg Weekly Gain/Loss$^\u2020$ in Units Sold'
+            footnote = u'\u2020 Measured from baseline t0 = 0 units.'
+
+    return title, footnote
 
 
 def subtitle_y(fig_height):
@@ -457,131 +468,6 @@ Horizontal Bar Chart of Products Ranked by Statistic(s)
 
 """
 
-def PlotRankedProducts(ranked_df, fig_height=7, round_to_int=False, millions=False,
-        in_bar=False, data_buff=5, label_buff=40, write_path=None):
-    """
-    Input: RankProducts.ranked_df object (pandas DataFrame)
-    Output: Horizontal bar graph showing products ranked by statistic
-    """
-    # prepare data series
-    to_plot = pd.Series(ranked_df.iloc[:,2].values,
-                        index=ranked_df['product_name'])
-    to_plot = to_plot[::-1]
-    y_pos = range(len(to_plot))
-    x = to_plot.values
-    y_labels = to_plot.index
-    stat_str = ranked_df.columns[2]
-    greys = rescale_RGB(Greys_9.colors)
-
-    # format figure
-    plt.figure(figsize=(7, fig_height), facecolor=greys[1])
-#     plt.style.use('bmh')
-    ax = plt.axes([.3,.1,.7,.65], facecolor=greys[1])
-    ax2 = plt.axes([.0,.1,.3,.65], sharey=ax)
-    ax.set_frame_on(True)
-    ax2.set_frame_on(False)
-    ax.yaxis.grid(False)
-    ax.xaxis.grid(False)
-    ax.spines['bottom'].set_visible(False)
-    ax.spines['top'].set_visible(False)
-    # ax.spines['bottom'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_visible(False)
-
-    # title, subtitle and footnote
-    tt, sb, ft = title_subtitle_footnote(ranked_df)
-    plt.figtext(-0.0, 0.85, tt, ha='left', fontsize=16, fontweight='bold')
-    if sb: plt.figtext(-0.0, 0.80, sb, ha='left', fontsize=14)
-    if ft: plt.figtext(-0.0, 0.0, ft, ha='left', fontsize=10)
-
-
-    # ytick formatting
-    ax.set_yticks(y_pos)
-    ax2.set_yticklabels(y_labels, ha='right', va='center',
-                        fontweight='ultralight', fontsize=12, color='black')
-    ax.tick_params(axis='both', which='both', bottom='off', top='off',
-                    left='off', right='off', labelleft='off',
-                    labelright='off', labelbottom='off')
-    ax2.tick_params(axis='both', which='both', bottom='off', top='off',
-                left='off', right='off', labelleft='off',
-                labelright='on', labelbottom='off', pad=-1*label_buff)
-
-    #  labelsize=12, labelcolor=greys[7],
-
-    # plot data
-    bars = ax.barh(y_pos, width=x, height=.8, color='green', alpha=0.7)
-    # color bars with negative values gray
-    for i, bar in enumerate(bars):
-        if x[i] < 0:
-            bar.set_color(greys[5])
-            bar.set_alpha(0.7)
-
-            # xtick formating (must follow plot data)
-        #     x_tix = ax.get_xticks()
-        #     stat_str = ranked_df.columns[2]
-        #     if currency_bool(stat_str):
-        #         plt.xticks(x_tix, [format_currency(tick) for tick in x_tix])
-        #     else:
-        #         plt.xticks(x_tix, [tick for tick in x_tix])
-
-        #     ax.tick_params(axis='x', which='both', bottom='off', top='off',
-        #                     left='off', right='off', color='black',
-        #                     labelbottom='off',
-        #                     labelsize=12, labelcolor=greys[8])
-
-    ax.axvline(0, color='black', linewidth=1)
-    ax.axhline(y_pos[-1] + 0.5, ls='--', lw=0.5, color='black', alpha=0.2)
-    for y in y_pos:
-        ax.axhline(y - 0.5, ls='--', lw=0.5, color='black', alpha=0.2)
-
-    # attach labels and values to bars
-    xmin, xmax = ax.get_xlim()
-    x_pos = data_pos(x, xmin, xmax, in_bar=in_bar, buffer=data_buff)
-    data_color = 'black' if not in_bar else 'white'
-    align = ('left', 'right') if not in_bar else ('right', 'left')
-    # buffer = max(abs(xmin), abs(xmax)) * 0.05
-    for i, label in enumerate(y_labels):
-        if currency_bool(stat_str):
-            if x[i] >= 0:
-    #             plt.text(-buffer, y_pos[i], label, color='green',
-    #                      fontsize=14, ha='right', va='center')
-                ax.text(x_pos[i], y_pos[i],
-                    format_currency(x[i],
-                    dollars=round_to_int, millions=millions
-                                   ),
-                    color=data_color, fontsize=12, ha=align[0], va='center')
-
-            else:
-    #             plt.text(buffer, y_pos[i], label, color=greys[6],
-    #                      fontsize=14, ha='left', va='center')
-                ax.text(x_pos[i], y_pos[i],
-                    format_currency(x[i],
-                    dollars=round_to_int, millions=millions
-                                   ),
-                    color=data_color, fontsize=12, ha=align[1], va='center')
-        else:
-            if x[i] >= 0:
-    #             plt.text(-buffer, y_pos[i], label, color='green',
-    #                      fontsize=14, ha='right', va='center')
-                ax.text(x_pos[i], y_pos[i],
-                    format_units(x[i],
-                    round_to_int=round_to_int, millions=millions
-                                ),
-                    color=data_color, fontsize=12, ha=align[0], va='center')
-
-            else:
-    #             plt.text(buffer, y_pos[i], label, color=greys[6],
-    #                      fontsize=14, ha='left', va='center')
-                ax.text(x_pos[i], y_pos[i],
-                    format_units(x[i],
-                    round_to_int=round_to_int, millions=millions
-                                ),
-                    color=data_color, fontsize=12, ha=align[1], va='center')
-
-    if write_path:
-        plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25)
-
-    plt.show()
 
 
 def get_data(product_IDs, period_wks=10, end_date=None,
@@ -591,7 +477,7 @@ def get_data(product_IDs, period_wks=10, end_date=None,
     prod_stats = ProductStatsDF(product_IDs, period_wks, end_date,
                 MA_params=[MA], compute_on_sales=rank_on_sales)
 
-    base_name = prod_stats.name + ', {}-Week Moving Average'.format(MA)
+    base_name = prod_stats.name + ' -- {}-Week Moving Average'.format(MA)
 
     if len(rank_by) < 2 or fixed_order: # just need the RankProducts.results object
         if len(rank_by) < 2:
@@ -635,8 +521,12 @@ def get_data(product_IDs, period_wks=10, end_date=None,
 
 def grab_column(df_cols, stat):
     """Get column title string from dataframe"""
+    if stat == 'sales':
+        tag = 'cumulative'
+    else:
+        tag = stat
     for c in df_cols:
-        if stat in c:
+        if tag in c:
             return c
 
 def hide_spines(ax):
@@ -688,8 +578,8 @@ def loc_format_value_label(x_arr, threshold=6, offset=0.02):
 def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
                rank_on_sales=True, MA_param=5, rank_by=['rate'], N_top=3,
                fixed_order=True, fig_height=4,
-               x_buff=0.005, x_in_bar=6, manual_data_label_format=None,
-               zero_gap=0.00, write_path=None):
+               x_buff=0.1, x_in_bar=6, manual_data_label_format=None,
+               zero_gap=0.00, write_path=None, tuner=0.86):
     """
     ARGUMENTS:
      -- product_IDs: (list of ints) products for ranking
@@ -742,22 +632,35 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
     fig, axs = plt.subplots(1, len(rank_by), squeeze=False, sharey=share_bool,
                             figsize=(8*len(rank_by), fig_height),
                             )
-    plt.suptitle('Figure Title', x=0, y=0.98, fontsize=20, fontweight='bold', horizontalalignment='left')
-    plt.figtext(0, 0.86, 'Figure Subtitle', fontsize=16, fontweight='normal', horizontalalignment='left')
+    if len(rank_by) > 1:
+        plt.suptitle(df.name, x=0, y=0.98, fontsize=20, fontweight='normal',
+                 va='top', ha='left')
+    else:
+        title_parsed = df.name.split(' -- ')
+        fig_title, fig_subtitle = title_parsed[0], title_parsed[1]
+        plt.suptitle(fig_title, x=0, y=0.98, fontsize=20, fontweight='normal',
+                     va='top', ha='left')
+        plt.figtext(0, tuner, fig_subtitle, fontsize=16, fontweight='normal',
+                    va='top', ha='left')
 
     y_pos = range(len(df)) # positions for horizontal bars and product labels
 
     for i, ax in enumerate(axs.flatten()):
 
         # format plot title
-        ax.set_title('Plot{}, {}'.format(i+1, rank_by[i].title()))
+#         stat_str = df.columns[(i*2)+1]
+        axtitle, footnote = axtitle_footnote(rank_by[i], rank_on_sales)
+        ax.set_title(axtitle, loc='left', fontsize=16, fontweight='bold',
+                    va='bottom', ha='left')
+        if footnote:
+            ax.annotate(footnote, xy=(0,-0.1), xycoords='axes fraction', ha='left',
+                       fontsize=10)
         hide_spines(ax)
 
         # format plot canvas(es)
         ax.axvline(0, color='0.2', linewidth=1)
         if not fixed_order and i != len(rank_by)-1:
             ax.spines['right'].set_visible('True')
-#         label_bool = 'on' if i==0 or not fixed_order else 'off'
         ax.tick_params(axis='y', which='both', bottom='off', top='off',
                 left='off', right='off', labelleft='on',
                 labelright='off', labelbottom='off')
@@ -784,9 +687,7 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
             q = manual_data_label_format
             x_labels = manual_data_format(x, q[0], q[1], q[2], dec=q[3])
         else:
-            stat_str = df.columns[(i*2)+1]
-            curr = currency_bool(stat_str)
-            x_labels = default_data_format(x, curr)
+            x_labels = default_data_format(x, rank_on_sales)
 
         # optional small gap (bar-zero-space, bzs) between bars and zero line
         gap = zero_gap * x_scale
@@ -810,7 +711,7 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
         # Add value labels to bars
         val_pos = loc_format_value_label(x, threshold=x_in_bar)
         for k, tup in enumerate(val_pos):
-            plt.text(tup[0], y_pos[k], x_labels[k],
+            ax.text(tup[0], y_pos[k], x_labels[k],
                    ha=tup[1], va='center', color=tup[2], fontsize=12)
 
     plt.tight_layout()
@@ -820,3 +721,150 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
                    dpi=1000)
     plt.show()
+
+
+
+#
+# def PlotRankedProducts(ranked_df, fig_height=7, round_to_int=False, millions=False,
+#         in_bar=False, data_buff=5, label_buff=40, write_path=None):
+#     """
+#     Input: RankProducts.ranked_df object (pandas DataFrame)
+#     Output: Horizontal bar graph showing products ranked by statistic
+#     """
+#     # prepare data series
+#     to_plot = pd.Series(ranked_df.iloc[:,2].values,
+#                         index=ranked_df['product_name'])
+#     to_plot = to_plot[::-1]
+#     y_pos = range(len(to_plot))
+#     x = to_plot.values
+#     y_labels = to_plot.index
+#     stat_str = ranked_df.columns[2]
+#     greys = rescale_RGB(Greys_9.colors)
+#
+#     # format figure
+#     plt.figure(figsize=(7, fig_height), facecolor=greys[1])
+# #     plt.style.use('bmh')
+#     ax = plt.axes([.3,.1,.7,.65], facecolor=greys[1])
+#     ax2 = plt.axes([.0,.1,.3,.65], sharey=ax)
+#     ax.set_frame_on(True)
+#     ax2.set_frame_on(False)
+#     ax.yaxis.grid(False)
+#     ax.xaxis.grid(False)
+#     ax.spines['bottom'].set_visible(False)
+#     ax.spines['top'].set_visible(False)
+#     # ax.spines['bottom'].set_visible(False)
+#     ax.spines['right'].set_visible(False)
+#     ax.spines['left'].set_visible(False)
+#
+#     # title, subtitle and footnote
+#     tt, sb, ft = title_subtitle_footnote(ranked_df)
+#     plt.figtext(-0.0, 0.85, tt, ha='left', fontsize=16, fontweight='bold')
+#     if sb: plt.figtext(-0.0, 0.80, sb, ha='left', fontsize=14)
+#     if ft: plt.figtext(-0.0, 0.0, ft, ha='left', fontsize=10)
+#
+#
+#     # ytick formatting
+#     ax.set_yticks(y_pos)
+#     ax2.set_yticklabels(y_labels, ha='right', va='center',
+#                         fontweight='ultralight', fontsize=12, color='black')
+#     ax.tick_params(axis='both', which='both', bottom='off', top='off',
+#                     left='off', right='off', labelleft='off',
+#                     labelright='off', labelbottom='off')
+#     ax2.tick_params(axis='both', which='both', bottom='off', top='off',
+#                 left='off', right='off', labelleft='off',
+#                 labelright='on', labelbottom='off', pad=-1*label_buff)
+#
+#     #  labelsize=12, labelcolor=greys[7],
+#
+#     # plot data
+#     bars = ax.barh(y_pos, width=x, height=.8, color='green', alpha=0.7)
+#     # color bars with negative values gray
+#     for i, bar in enumerate(bars):
+#         if x[i] < 0:
+#             bar.set_color(greys[5])
+#             bar.set_alpha(0.7)
+#
+#             # xtick formating (must follow plot data)
+#         #     x_tix = ax.get_xticks()
+#         #     stat_str = ranked_df.columns[2]
+#         #     if currency_bool(stat_str):
+#         #         plt.xticks(x_tix, [format_currency(tick) for tick in x_tix])
+#         #     else:
+#         #         plt.xticks(x_tix, [tick for tick in x_tix])
+#
+#         #     ax.tick_params(axis='x', which='both', bottom='off', top='off',
+#         #                     left='off', right='off', color='black',
+#         #                     labelbottom='off',
+#         #                     labelsize=12, labelcolor=greys[8])
+#
+#     ax.axvline(0, color='black', linewidth=1)
+#     ax.axhline(y_pos[-1] + 0.5, ls='--', lw=0.5, color='black', alpha=0.2)
+#     for y in y_pos:
+#         ax.axhline(y - 0.5, ls='--', lw=0.5, color='black', alpha=0.2)
+#
+#     # attach labels and values to bars
+#     xmin, xmax = ax.get_xlim()
+#     x_pos = data_pos(x, xmin, xmax, in_bar=in_bar, buffer=data_buff)
+#     data_color = 'black' if not in_bar else 'white'
+#     align = ('left', 'right') if not in_bar else ('right', 'left')
+#     # buffer = max(abs(xmin), abs(xmax)) * 0.05
+#     for i, label in enumerate(y_labels):
+#         if currency_bool(stat_str):
+#             if x[i] >= 0:
+#     #             plt.text(-buffer, y_pos[i], label, color='green',
+#     #                      fontsize=14, ha='right', va='center')
+#                 ax.text(x_pos[i], y_pos[i],
+#                     format_currency(x[i],
+#                     dollars=round_to_int, millions=millions
+#                                    ),
+#                     color=data_color, fontsize=12, ha=align[0], va='center')
+#
+#             else:
+#     #             plt.text(buffer, y_pos[i], label, color=greys[6],
+#     #                      fontsize=14, ha='left', va='center')
+#                 ax.text(x_pos[i], y_pos[i],
+#                     format_currency(x[i],
+#                     dollars=round_to_int, millions=millions
+#                                    ),
+#                     color=data_color, fontsize=12, ha=align[1], va='center')
+#         else:
+#             if x[i] >= 0:
+#     #             plt.text(-buffer, y_pos[i], label, color='green',
+#     #                      fontsize=14, ha='right', va='center')
+#                 ax.text(x_pos[i], y_pos[i],
+#                     format_units(x[i],
+#                     round_to_int=round_to_int, millions=millions
+#                                 ),
+#                     color=data_color, fontsize=12, ha=align[0], va='center')
+#
+#             else:
+#     #             plt.text(buffer, y_pos[i], label, color=greys[6],
+#     #                      fontsize=14, ha='left', va='center')
+#                 ax.text(x_pos[i], y_pos[i],
+#                     format_units(x[i],
+#                     round_to_int=round_to_int, millions=millions
+#                                 ),
+#                     color=data_color, fontsize=12, ha=align[1], va='center')
+#
+#     if write_path:
+#         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25)
+#
+#     plt.show()
+
+
+# def currency_bool(stat_str):
+#     """Return True if values to be formatted in currency"""
+#     if 'sales' in stat_str.lower():
+#         return True
+#     if 'sold' in stat_str.lower():
+#         return False
+#     if 'ma log' in stat_str.lower():
+#         return False
+#     if 'shifted log' in stat_str.lower():
+#         return False
+#     if 'gain' in stat_str.lower():
+#         return True
+#     if 'normd auc' in stat_str.lower():
+#         return False
+#     if 'normd growth' in stat_str.lower():
+#         return True
