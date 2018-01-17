@@ -61,17 +61,21 @@ def select_step(val_range, low, high, max_N_ticks=10):
 
 
 def round_to_step(val_range, low, high, max_N_ticks=10):
-    """Round max or abs(min) ytick value up to next step"""
+    """Round max or abs(min) ytick value down or up to next step"""
     step = select_step(val_range, low, high, max_N_ticks)
     multiple = (int(high) / step) + 1
     return step * multiple
 
 
 def round_down_to_step(val_range, low, high, max_N_ticks=10):
-    """Round positive low ytick value down to next step"""
+    """Round low ytick value down to next step"""
     step = select_step(val_range, low, high, max_N_ticks)
-    multiple = (int(low) / step)
-    return step * multiple
+    if low >= 0:
+        multiple = (int(low) / step)
+        return step * multiple
+    else:
+        multiple = abs(int(low) / step)
+        return -1 * step * multiple
 
 
 def round_up_to_pwr(high_val, range_val):
@@ -107,7 +111,7 @@ def ylims(val_range, low, high, max_N_ticks=10):
             y_high = round_to_step(val_range, low, high, max_N_ticks)
 
     if low < 0:
-        y_low = -1 * round_to_step(abs(low), val_range, max_N_ticks)
+        y_low = round_down_to_step(val_range, low, high, max_N_ticks)
         y_high = round_to_step(val_range, low, high, max_N_ticks)
 
     return y_low, y_high
@@ -311,7 +315,7 @@ def axtitle_footnote(rank_by, curr_bool):
             footnote = None
         if rank_by == 'rate':
             title = u'Normalized$^*$Rate of Gain/Loss \nin Daily Sales'
-            footnote = '* Daily sales for each strain rescaled to (-$50, $50) then shifted to t0 = $0.00'
+            footnote = '* Daily sales data for each strain rescaled to (-$50, $50) then shifted to t0 = $0.00'
         if rank_by == 'gain':
             title = u'Avg Weekly Gain/Loss$^\u2020$ in Sales'
             footnote = u'\u2020 Measured from baseline t0 = $0.00'
@@ -321,7 +325,7 @@ def axtitle_footnote(rank_by, curr_bool):
             footnote = None
         if rank_by == 'rate':
             title = u'Normalized$^*$Rate of Gain/Loss \nin Daily Units Sold'
-            footnote = u'* Daily sales for each strain rescaled to (-50, 50) then shifted to t0 = 0 units.'
+            footnote = u'* Daily sales data for each strain rescaled to (-50, 50) then shifted to t0 = 0 units.'
         if rank_by == 'gain':
             title = u'Avg Weekly Gain/Loss$^\u2020$ in Units Sold'
             footnote = u'\u2020 Measured from baseline t0 = 0 units.'
@@ -720,6 +724,144 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
                    dpi=1000)
+    plt.show()
+
+"""
+~~~~~~~~~~~~~~~~~~~~~~~
+Separate, Filled Trend Plots for Products on Same Y_Scale
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+"""
+
+def PlotFilledTrends(product_IDs, period_wks=10, end_date=None,
+                     compute_on_sales=True, MA_param=None, shifted=False,
+                     normed=False, max_yticks=10, fig_height=7,
+                     trunc_yticks=False, write_path=None):
+    """Separately plot sales trends for products on identical y-scales and
+    trend parameters.
+
+    Default arguments plot on time series of raw sales data. Otherwise,
+    assign value MA_param= for moving average. Optionally may assign True
+    to either shifted= or normed= arguments (NOT BOTH).
+
+        ARGUMENTS:
+     -- product_IDs: (list of ints) products for ranking
+     -- period_wks: (int, default=10) sample period for time series in weeks
+     -- end_date: (date string: '07/15/2016', default=None) date string defining
+          end of sampling period. Default uses most recent date in dataset.
+     -- rank_on_sales: (bool, default=True) ranks on sales data; if False,
+          ranks on units sold data
+     -- MA_param: (int) return dataframe of moving averages; int defines "boxcar"
+          window, in weeks, by which to compute moving average
+     -- shifted: (bool, default=False) shift trend data to t0 = 0
+     -- normed: (bool, default=False) rescale data to feature range (-1, 1)
+          then shift data such that t0 = 0.
+     -- compute_on_sales: (bool, default=True) computes on sales data; if False,
+          computes on units-sold data
+     -- fig_height: (int, default=7) factor for y-dimension of plt.figure
+     -- trunc_yticks: (bool, default=False) If True, remove yticks between zero
+          and step below lowest data value and set that step as x-axis
+     -- write_path: (str, default=None) write graph to 'path/file'
+    """
+    df = CompTrendsDF(product_IDs, period_wks, end_date=end_date,
+                    compute_on_sales=compute_on_sales, MA_param=MA_param,
+                     shifted=shifted, normed=normed)
+
+    products = df.columns
+    fig, axs = plt.subplots(len(products), 1, squeeze=False, sharex='row',
+                            figsize=(10, fig_height*len(products))
+                           )
+
+    if MA_param:
+        title_parsed = df.name.split(', D')
+        fig_t, fig_subt = title_parsed[0], title_parsed[-1]
+        title = fig_t + '\nD' + fig_subt
+    else:
+        title = df.name
+    plt.suptitle(title, x=0.5, y=0, fontsize=18,
+                 fontweight='normal', va='bottom', ha='center')
+
+    axes = axs.flatten()
+    for i, ax in enumerate(axes):
+        hide_spines(ax)
+        ax.spines['bottom'].set_visible(True)
+        series = df[products[i]]
+        y_pos, y_neg = series.copy(), series.copy()
+        ax.set_title('{}'.format(products[i]), loc='center', fontsize=16,
+            fontweight='bold', ha='center', va='bottom', color='green')
+
+        y_pos[y_pos < 0] = np.nan
+        y_neg[y_neg >= 0] = np.nan
+        ax.plot(y_pos, lw=2.5, color='green')
+        ax.fill_between(y_pos.index, y_pos, facecolor='green', alpha=0.5)
+        ax.plot(y_neg, lw=2.5, color='0.3')
+        ax.fill_between(y_neg.index, y_neg, facecolor='0.3', alpha=0.5)
+        ax.axhline(lw=1.5, color='0.6')
+
+
+        # set x_axis limits; add one day to upper limit for last minor tick mark
+        idx = df.index
+        ax.set_xlim(idx[0], idx[-1] + pd.DateOffset(1))
+
+        # Format x_major ticks with month name at each beginning of month
+        ax.tick_params(axis='x', which='major', bottom='off', top='off',
+                        left='off', right='off', labelbottom='on', pad=10,
+                        labelsize=14, rotation=45)
+        ax.xaxis.set_major_locator(mdates.MonthLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
+
+        # place a minor tick on x-axis at each week
+        ax.tick_params(axis='x', which='minor', direction='out', length=10,
+                        width=1.0, labelbottom='off', left='off', right='off')
+        ax.xaxis.set_minor_locator(plt.MultipleLocator(7)) # 7 days
+
+        # set y_axis limits and format tick labels and grid lines
+        if 'scale' in df.name.lower(): # i.e., if data rescaled / normed
+            ax.set_ylim(-120, 120)
+            tick_arr = [-100, 0, 100]
+            ax.tick_params(axis='y', which='both', bottom='off', top='off',
+                            left='off', right='off', labelleft='on',
+                          labelsize=14)
+            if 'unit' in df.name.lower():
+                ax.set_yticks(tick_arr)
+                ax.set_yticklabels([y for y in tick_arr])
+            else:
+                ax.set_yticks(tick_arr)
+                ax.set_yticklabels([y_to_str(y) for y in tick_arr])
+            ax.yaxis.grid(True, ls='--', lw=0.5, color='0.7')
+
+        else:
+            val_range, data_min, data_max = range_vals(df)
+            y_low, y_high = ylims(val_range, data_min, data_max,
+                    max_N_ticks=max_yticks) # custom function
+            bottom_buffer = val_range * 0.05
+            ax.set_ylim(y_low - bottom_buffer, y_high)
+
+            # space and format y_ticks
+            step = select_step(val_range, data_min, data_max,
+                                max_N_ticks=max_yticks)
+            tick_arr = space_yticks(y_low, y_high, step,
+                                    trunc_yticks=trunc_yticks)
+            ax.tick_params(axis='y', which='both', bottom='off', top='off',
+                            left='off', right='off', labelleft='on',
+                          labelsize=14)
+            if 'unit' in df.name.lower():
+                ax.set_yticks(tick_arr)
+                ax.set_yticklabels([y for y in tick_arr])
+                ax.set_ylabel('Units Sold', fontsize=14, labelpad=15)
+            else:
+                ax.set_yticks(tick_arr)
+                ax.set_yticklabels([y_to_str(y) for y in tick_arr])
+            ax.yaxis.grid(True, ls='--', lw=0.5, color='0.5')
+
+
+    plt.tight_layout()
+    fig.subplots_adjust(bottom=.1, top=.85, hspace=0.6)
+
+    if write_path:
+    plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
+               dpi=1000)
+
     plt.show()
 
 
