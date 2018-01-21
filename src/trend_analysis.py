@@ -667,7 +667,12 @@ def BestSellerData(product_IDs, end_date=None, period_wks=10, MA_param=5,
     df_A = pd.DataFrame(data_A, index=range(1, len(product_IDs)+1))
             # index of df_A represents rank levels 1 to N
     df_B = pd.DataFrame(data_B, index=date_idx)
-
+    # Sort df_B columns by most-consistently high ranked
+    sum_o_ranks = df_B.sum()
+    foo = sum_o_ranks.sort_values(ascending=True)
+    sorted_by_best = list(foo.index)
+    df_B = df_B[sorted_by_best]
+    
     df_A.name = title
     df_B.name = title
 
