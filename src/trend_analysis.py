@@ -22,6 +22,7 @@ A LA CARTE FUNCTIONS:
  -- add_rolling_avg_col(df, window_wks, data_col='ttl_sales')
 """
 
+from datetime import datetime
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
@@ -448,7 +449,8 @@ def column_sel(MA_param=None, exp_smooth_param=None, shifted=False, normed=False
     if smoothed and normed:
         return 3
 
-
+### Bug: RankProducts.main() only works with stats argument when the psdf is created with
+### a moving average; without MA, the psdf has no 'rate' or 'gain' cols
 class RankProducts(object):
     """Initialize with ProductStatsDF object and (optionally) by number of top
     results desired; Rank products by user_selected statistic
@@ -484,6 +486,7 @@ class RankProducts(object):
           * 'sales' = cumulative sales over period
 
         """
+
         if stat:
             cols = self.product_stats_df.columns
             tag = stat if stat != 'sales' else 'cumulative' # bug fix to work with sales or units
@@ -525,6 +528,153 @@ class RankProducts(object):
             print(str(k) + ' -- ' + v)
         selection = int(raw_input('\nSelect statistic for ranking.'))
         return selection + 1
+
+
+"""
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+GENERATE BEST-SELLER DATA
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+"""
+
+def generate_dates(end_date, N_periods=10, freq='7D'):
+    """Make list of end_dates for ranking periods based on BestSellerData params."""
+    end_dates = []
+    last_date = datetime.strptime(end_date, '%m/%d/%Y')
+    d_range = pd.date_range(end=last_date, periods=N_periods, freq=freq)
+    for d in d_range:
+        str_d = d.strftime('%m/%d/%Y')
+        end_dates.append(str_d)
+
+    return end_dates
+
+def parse_freq(freq):
+    if freq == '7D' or freq == 'W':
+        return 'at Weekly Intervals'
+    if 'W' in freq and len(freq) > 1:
+        mult = list(freq)[0]
+        return 'at {}-Week Intervals'.format(mult)
+    if freq == 'M':
+        return 'at Monthly Intervals'
+    if 'M' in freq and len(freq) > 1:
+        mult = list(freq)[0]
+        return 'at {}-Month Intervals'.format(mult)
+    if freq == 'Y':
+        return 'Spaced Annually'
+
+def best_seller_title(MA_param, compute_on_sales, N_periods, period_wks,
+                     rank_by, freq):
+    "Construct title (pandas.DataFrame.name) for BestSellerData objects."
+
+    if rank_by == 'rate':
+        alpha = 'Growth Rate Normalized for Differential Sales Volumes'
+    if rank_by == 'gain':
+        alpha = 'Average Weekly Gain/Loss in Sales over Period'
+    if rank_by == 'sales':
+        alpha = 'Cumulative Sales over Period'
+    A = 'Products Ranked by {}'.format(alpha)
+
+    beta = 'Sales ' if compute_on_sales else 'Units Sold '
+    B = '{}-Week Moving Avg Trends in Daily {}'.format(MA_param, beta)
+    C = 'over {} Successive {}-Week Periods '.format(N_periods,
+                                                    period_wks)
+    gamma = parse_freq(freq)
+    D = 'Spaced {}'.format(gamma)
+
+    return A + ' -- ' + B + C + D
+
+
+def BestSellerData(product_IDs, end_date=None, period_wks=10, MA_param=5,
+                   normed=True, compute_on_sales=True,
+                   N_periods=10, freq='7D', rank_by='rate'):
+    """Return dataframes and a dictionary of sum of rankings by trend for products
+    on specified end_dates
+
+    ARGUMENTS:
+     -- product_IDs: (list of ints)
+     -- end_date: (date string of form 'MM/DD/YYYY', default=None) end_date of most recent
+         ranking period; default uses most recent date in dataset.
+     -- period_wks: (int, default=10) sampling periods in weeks
+     -- MA_params: (int, default=None) rolling "boxcar" window, in weeks, by which to
+          compute moving averages; default ranks on non-smoothed data
+     -- normed: (bool, default=True) add a column for each rolling average or expon.
+          smoothed column that computes on data that has been rescaled (-1, 1)
+          and then shifted such that datum at t0 = 0.
+     -- compute_on_sales: (bool, default=True) ranks on sales data; if False,
+          ranks on units-sold data
+     -- N_periods: (int, default=10) number of periods including latest for comparison
+     -- freq: (str, default='7D') pandas date_range() argument; interval between
+         periods for comparison. Other possible values: 'W' (Sunday week), 'M' (month),
+         'Y', '2W', etc.
+     -- rank_by: (string, default='rate') statistic by which to rank products.
+          Values:
+          * 'rate' = growth rate index for products with data
+              normalized (rescaled -100, 100) for sales volumes
+          * 'gain' = uniform weekly gain or loss over period
+          * 'sales' = cumulative sales over period
+    """
+
+    # Generate list of end_dates for periods
+    if end_date:
+        end_dates = generate_dates(end_date, N_periods, freq)
+    else: # If not provided as argument, grab most recent date in data index
+        imp = ImportSalesData(product_IDs[0])
+        imp.main()
+        seed_ts = imp.sales
+        dt_obj = seed_ts.index[-1]
+        end_date = datetime.strftime(dt_obj, '%m/%d/%Y')
+        end_dates = generate_dates(end_date, N_periods, freq)
+
+    # Generate data consisting of product rankings over multiple periods
+    data_A = OrderedDict()
+    name_dict = {} # to map names to IDs for df labels
+    for i, end_d in enumerate(end_dates):
+        # compute stats on products
+        if MA_param:
+            psdf = ProductStatsDF(product_IDs, period_wks=period_wks, end_date=end_d,
+                    MA_params=[MA_param], normed=normed, compute_on_sales=compute_on_sales
+                            )
+        else: # if no moving-avg sliding window provided, omit argument
+            psdf = ProductStatsDF(product_IDs, period_wks=period_wks, end_date=end_d,
+                    normed=normed, compute_on_sales=compute_on_sales
+                            )
+        # On first pass, populate name_dict
+        if i == 0:
+            for row in psdf.index:
+                prod_id = psdf.iloc[row].product_id
+                prod_name = psdf.iloc[row].product_name
+                name_dict[prod_id] = prod_name
+
+        # Generate rankings and add to data dictionary data_A
+        ranked = RankProducts(psdf)
+        ranked.main(stat=rank_by)
+        data_A[end_d] = ranked.ranked_IDs
+
+    # Reconfigure data into dict of rankings by product
+    data_B = OrderedDict()
+    for prod in product_IDs:
+        data_B[name_dict[prod]] = []
+    for prod_arr in data_A.itervalues():
+        for i, prod in enumerate(prod_arr):
+            data_B[name_dict[prod]].append(i+1) # i+1 represents product rank
+
+    # Construct output dataframes
+    mask = lambda x: datetime.strptime(x, '%m/%d/%Y')
+    date_idx = [mask(dt) for dt in end_dates] # DatetimeIndex for df_B
+
+    title = best_seller_title(MA_param, compute_on_sales, N_periods,
+                          period_wks, rank_by, freq)
+
+    df_A = pd.DataFrame(data_A, index=range(1, len(product_IDs)+1))
+            # index of df_A represents rank levels 1 to N
+    df_B = pd.DataFrame(data_B, index=date_idx)
+
+    df_A.name = title
+    df_B.name = title
+
+    return df_A, df_B
+
+
+
 
 
 """
