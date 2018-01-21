@@ -586,8 +586,8 @@ def best_seller_title(MA_param, compute_on_sales, N_periods, period_wks,
 def BestSellerData(product_IDs, end_date=None, period_wks=10, MA_param=5,
                    normed=True, compute_on_sales=True,
                    N_periods=10, freq='7D', rank_by='rate'):
-    """Return dataframes and a dictionary of sum of rankings by trend for products
-    on specified end_dates
+    """Return dataframes summarizing rankings by trend for products over a series
+    of N-identical-length periods spaced at equal intervals.
 
     ARGUMENTS:
      -- product_IDs: (list of ints)
@@ -667,18 +667,16 @@ def BestSellerData(product_IDs, end_date=None, period_wks=10, MA_param=5,
     df_A = pd.DataFrame(data_A, index=range(1, len(product_IDs)+1))
             # index of df_A represents rank levels 1 to N
     df_B = pd.DataFrame(data_B, index=date_idx)
-    # Sort df_B columns by most-consistently high ranked
+    # Sort df_B columns by cumulative rankings
     sum_o_ranks = df_B.sum()
     foo = sum_o_ranks.sort_values(ascending=True)
     sorted_by_best = list(foo.index)
     df_B = df_B[sorted_by_best]
-    
+
     df_A.name = title
     df_B.name = title
 
     return df_A, df_B
-
-
 
 
 
