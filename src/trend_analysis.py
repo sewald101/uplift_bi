@@ -586,14 +586,20 @@ def best_seller_title(MA_param, compute_on_sales, N_periods, period_wks,
 def BestSellerData(product_IDs, end_date=None, period_wks=10, MA_param=5,
                    normed=True, compute_on_sales=True,
                    N_periods=10, freq='7D', rank_by='rate'):
-    """Return dataframes summarizing rankings by trend for products over a series
+    """Return dataframes summarizing rankings for products over a series
     of N-identical-length periods spaced at equal intervals.
+
+    OUTPUT: tuple (df_A, df_B)
+     -- df_A: DataFrame of product_IDs ranked for each period
+     -- df_B: DataFrame of rankings for each product indexed by date and column-
+         sorted left to right by cumulative highest ranks over all periods; This
+         df is suitable for slope-graphing.
 
     ARGUMENTS:
      -- product_IDs: (list of ints)
      -- end_date: (date string of form 'MM/DD/YYYY', default=None) end_date of most recent
          ranking period; default uses most recent date in dataset.
-     -- period_wks: (int, default=10) sampling periods in weeks
+     -- period_wks: (int, default=10) length of sampling periods in weeks
      -- MA_params: (int, default=None) rolling "boxcar" window, in weeks, by which to
           compute moving averages; default ranks on non-smoothed data
      -- normed: (bool, default=True) add a column for each rolling average or expon.
@@ -676,7 +682,11 @@ def BestSellerData(product_IDs, end_date=None, period_wks=10, MA_param=5,
     df_A.name = title
     df_B.name = title
 
-    return df_A, df_B
+    labels = [name_dict[PID] for PID in df_A.iloc[:,-1]]
+    label_pos = df_B.iloc[-1,:].values
+    labeler = zip(label_pos, labels)
+
+    return df_A, df_B, labeler
 
 
 
