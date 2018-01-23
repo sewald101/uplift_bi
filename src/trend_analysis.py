@@ -115,7 +115,11 @@ class ProductTrendsDF(object):
           of exponentially smoothed data
      -- normed: (bool, default=True) add a column for each moving-average or
           exponentially smoothed column that computes on data rescaled (-1, 1)
-          and then shifted such that datum at t0 = 0.
+          and then shifted per baseline parameter.
+     -- baseline: (str, default='t_zero') baseline for shifing data; values:
+          * 't_zero' -- shift data by value at t0
+          * 'mean' -- shift data by the mean
+          * 'median' -- shift data by the median
 
     ATTRIBUTES:
      -- trendsDF: (pandas DataFrame)
@@ -137,7 +141,7 @@ class ProductTrendsDF(object):
     """
 
     def __init__(self, ts, period_wks, end_date=None, MA_params=None,
-                    exp_smooth_params=None, normed=True):
+                    exp_smooth_params=None, normed=True, baseline='t_zero'):
         self.ts = ts
         self.raw_df = None
         self.period_wks = period_wks
@@ -146,6 +150,7 @@ class ProductTrendsDF(object):
         self.MA_params = MA_params
         self.exp_smooth_params = exp_smooth_params
         self.normed = normed
+        self.baseline = baseline
         self.product_name = self.ts.name.split('(')[0].strip()
         self.product_ID = int(self.ts.name.split(')')[0].split(' ')[-1])
         self.sales_col_name = self.ts.name.split(' -- ')[-1]
@@ -183,9 +188,16 @@ class ProductTrendsDF(object):
             self.raw_df[col_name] = self.ts.rolling(window=boxcar).mean()
             self.trendsDF[col_name] = \
                 self.raw_df[col_name][self.trendsDF.index].apply(rounder)
-            # Shift moving averages to t0 = 0
-            self.trendsDF[col_name + ' SHIFTED'] = \
-                self.trendsDF[col_name] - self.trendsDF[col_name][0]
+            # Shift moving averages to baseline
+            if self.baseline == 't_zero':
+                self.trendsDF[col_name + ' SHIFTED'] = \
+                    self.trendsDF[col_name] - self.trendsDF[col_name][0]
+            if self.baseline == 'mean':
+                self.trendsDF[col_name + ' SHIFTED'] = \
+                    self.trendsDF[col_name] - self.trendsDF[col_name].mean()
+            if self.baseline == 'median':
+                self.trendsDF[col_name + ' SHIFTED'] = \
+                    self.trendsDF[col_name] - np.median(self.trendsDF[col_name])
 
             if self.normed:
                 normed_col_name = '{}wk MA NORMD'.format(wk_window)
@@ -256,16 +268,22 @@ class ProductTrendsDF(object):
 
 
     def norm_Series(self, col):
-        """Return time series rescaled then shifted such that t0 = 0 and values
-        range from (-100, 100)
+        """Return time series rescaled then shifted to baseline.
         """
         values = col.values
         values = values.reshape(-1,1)
         scaler = MinMaxScaler(feature_range=(-50,50))
         scaler = scaler.fit(values)
         scaled_vals = scaler.transform(values).flatten()
-        normed_trend = pd.Series(scaled_vals - scaled_vals[0], index=col.index)
-        return normed_trend
+        if self.baseline == 't_zero':
+            normed_trend = pd.Series(scaled_vals - scaled_vals[0], index=col.index)
+            return normed_trend
+        if self.baseline == 'mean':
+            normed_trend = pd.Series(scaled_vals - scaled_vals.mean(), index=col.index)
+            return normed_trend
+        if self.baseline == 'median':
+            normed_trend = pd.Series(scaled_vals - np.median(scaled_vals), index=col.index)
+            return normed_trend
 
 
     def trend_AUC(self, ts, log_scaled=False, sqrt_scaled=False):
@@ -297,7 +315,8 @@ class ProductTrendsDF(object):
 
 
 def ProductStatsDF(product_IDs, period_wks, end_date=None, MA_params=None,
-                  exp_smooth_params=None, normed=True, compute_on_sales=True):
+                  exp_smooth_params=None, normed=True, baseline='t_zero',
+                  compute_on_sales=True):
     """Construct DataFrame showing comparative sales stats among multiple products.
     See output DataFrame.name attribute for title.
 
@@ -315,7 +334,11 @@ def ProductStatsDF(product_IDs, period_wks, end_date=None, MA_params=None,
           of exponentially smoothed data
      -- normed: (bool, default=True) add a column for each rolling average or expon.
           smoothed column that computes on data that has been rescaled (-1, 1)
-          and then shifted such that datum at t0 = 0.
+          and then shifted to baseline.
+     -- baseline: (str, default='t_zero') baseline for shifing data; values:
+          * 't_zero' -- shift data by value at t0
+          * 'mean' -- shift data by the mean
+          * 'median' -- shift data by the median
      -- compute_on_sales: (bool, default=True) computes on sales data; if False,
           computes on units-sold data
     """
@@ -330,7 +353,7 @@ def ProductStatsDF(product_IDs, period_wks, end_date=None, MA_params=None,
         else:
             ts = raw_data.units_sold
         trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
-                                     exp_smooth_params, normed)
+                                     exp_smooth_params, normed, baseline)
         trends_data.main()
         data.append(trends_data.trend_stats)
 
@@ -346,7 +369,7 @@ def ProductStatsDF(product_IDs, period_wks, end_date=None, MA_params=None,
 
 def CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
                   exp_smooth_param=None, shifted=False, normed=False,
-                  compute_on_sales=True):
+                  baseline='t_zero', compute_on_sales=True):
     """Construct DataFrame with time series across multiple products. Default
     arguments return a DataFrame with time series of raw sales data. Otherwise,
     assign value to either MA_param= or exp_smooth_param= (NOT BOTH). Optionally
@@ -364,6 +387,10 @@ def CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
      -- shifted: (bool, default=False) shift trend data to t0 = 0
      -- normed: (bool, default=False) rescale data to feature range (-1, 1)
           then shift data such that t0 = 0.
+     -- baseline: (str, default='t_zero') baseline for shifing data; values:
+          * 't_zero' -- shift data by value at t0
+          * 'mean' -- shift data by the mean
+          * 'median' -- shift data by the median
      -- compute_on_sales: (bool, default=True) computes on sales data; if False,
           computes on units-sold data
     """
@@ -387,13 +414,14 @@ def CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
                 stage_1_ts = stage_1.units_sold
 
             stage_2 = ProductTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
-                            exp_smooth_param, normed)
+                            exp_smooth_param, normed, baseline)
             stage_2.main()
             seed_df = stage_2.trendsDF
 
             # Construct comp_trends_df title
-            C = ', Data Shifted t0=0'
-            D = ', Data Rescaled (-50, 50) then Shifted (t0=0)'
+            bsln = baseline.capitalize() if baseline != 't_zero' else 'T0 = 0'
+            C = ', Data Shifted to {}'.format(bsln)
+            D = ', Data Rescaled (-50, 50) then Shifted to {}'.format(bsln)
             E = seed_df.name.split('in ')[1]
             if col_index == 0:
                 title = E

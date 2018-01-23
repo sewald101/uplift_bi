@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib import rcParams
 from palettable.tableau import (Tableau_20, Tableau_10, TableauLight_10,
-        TableauMedium_10,PurpleGray_6, PurpleGray_12, ColorBlind_10, Gray_5)
+        TableauMedium_10, PurpleGray_6, PurpleGray_12, ColorBlind_10, Gray_5)
 from palettable.colorbrewer.sequential import (Greens_5, Greens_9,
     Greys_5, Greys_9, Purples_5, Purples_9)
 
@@ -735,7 +735,7 @@ Separate, Filled Trend Plots for Products on Same Y_Scale
 
 def PlotFilledTrends(product_IDs, period_wks=10, end_date=None,
                      compute_on_sales=True, MA_param=None, shifted=False,
-                     normed=False, max_yticks=10, fig_height=7,
+                     normed=False, baseline='t_zero', max_yticks=10, fig_height=7,
                      trunc_yticks=False, write_path=None):
     """Separately plot sales trends for products on identical y-scales and
     trend parameters.
@@ -753,9 +753,13 @@ def PlotFilledTrends(product_IDs, period_wks=10, end_date=None,
           ranks on units sold data
      -- MA_param: (int) return dataframe of moving averages; int defines "boxcar"
           window, in weeks, by which to compute moving average
-     -- shifted: (bool, default=False) shift trend data to t0 = 0
+     -- shifted: (bool, default=False) shift trend data to baseline
      -- normed: (bool, default=False) rescale data to feature range (-1, 1)
-          then shift data such that t0 = 0.
+          then shift data to baseline.
+     -- baseline: (str, default='t_zero') baseline for shifing data; values:
+          * 't_zero' -- shift data by value at t0
+          * 'mean' -- shift data by the mean
+          * 'median' -- shift data by the median
      -- compute_on_sales: (bool, default=True) computes on sales data; if False,
           computes on units-sold data
      -- fig_height: (int, default=7) factor for y-dimension of plt.figure
@@ -765,7 +769,7 @@ def PlotFilledTrends(product_IDs, period_wks=10, end_date=None,
     """
     df = CompTrendsDF(product_IDs, period_wks, end_date=end_date,
                     compute_on_sales=compute_on_sales, MA_param=MA_param,
-                     shifted=shifted, normed=normed)
+                     shifted=shifted, normed=normed, baseline=baseline)
 
     products = df.columns
     fig, axs = plt.subplots(len(products), 1, squeeze=False, sharex='row',
@@ -856,7 +860,8 @@ def PlotFilledTrends(product_IDs, period_wks=10, end_date=None,
 
 
     plt.tight_layout()
-    fig.subplots_adjust(bottom=.1, top=.85, hspace=0.6)
+    footer = {1:0.30, 2:0.15, 3:0.10, 4:0.075, 5:0.06}
+    fig.subplots_adjust(bottom=footer[len(product_IDs)], top=.85, hspace=0.6)
 
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
