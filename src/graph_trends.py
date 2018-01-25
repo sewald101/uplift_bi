@@ -199,140 +199,6 @@ Data rescaled to (-50, 50) then shifted (t0=0)."""
 
 
 
-def format_currency(x, dollars=False, millions=False, decimals=3):
-    if x >= 0:
-        if millions:
-            return '${:.{prec}f}M'.format(x * 1e-6, prec=decimals)
-        if dollars:
-            return '${:,}'.format(int(round(x, 0)))
-        else:
-            return '${:.2f}'.format(x)
-    else:
-        if millions:
-            return '-${:.{prec}f}M'.format(abs(x * 1e-6), prec=decimals)
-        if dollars:
-            return '-${:,}'.format(int(round(abs(x), 0)))
-        else:
-            return '-${:.2f}'.format(abs(x))
-
-
-def format_units(x, round_to_int=False, millions=False, decimals=3):
-    if millions:
-        return '{:.{prec}f}M'.format(x * 1e-6, prec=decimals)
-    if round_to_int:
-        return '{:,}'.format(int(round(x, 0)))
-    else:
-        return '{:.{prec}f}'.format(x, prec=decimals)
-
-
-def default_data_format(x_arr, curr_bool):
-    """Format data labels based on currency detection and max(abs(x))."""
-    formatted = []
-    max_x = max(max(x_arr), abs(min(x_arr)))
-    if curr_bool:
-        if max_x > 999999:
-            for x in x_arr:
-                formatted.append(format_currency(x, millions=True))
-        elif max_x > 199:
-            for x in x_arr:
-                formatted.append(format_currency(x, dollars=True))
-        else:
-            for x in x_arr:
-                formatted.append(format_currency(x))
-    else:
-        if max_x > 999999:
-            for x in x_arr:
-                formatted.append(format_units(x, millions=True))
-        if max_x > 3:
-            for x in x_arr:
-                formatted.append(format_units(x, round_to_int=True))
-        else:
-            for x in x_arr:
-                formatted.append(format_units(x))
-
-    return formatted
-
-
-def manual_data_format(x_arr, curr_bool, millions_bool=None,
-                        ints_bool=None, dec=3):
-    """Format x_labels according to user specifications"""
-    formatted = []
-    if curr_bool:
-        if millions_bool:
-            for x in x_arr:
-                formatted.append(format_currency(x, millions=True,
-                                                    decimals=dec))
-            return formatted
-        elif ints_bool:
-            for x in x_arr:
-                formatted.append(format_currency(x, dollars=True))
-            return formatted
-        else:
-            for x in x_arr:
-                formatted.append(format_currency(x))
-            return formatted
-    else:
-        if millions_bool:
-            for x in x_arr:
-                formatted.append(format_units(x, millions=True,
-                                                decimals=dec))
-            return formatted
-        if ints_bool:
-            for x in x_arr:
-                formatted.append(format_units(x, round_to_int=True))
-            return formatted
-        else:
-            for x in x_arr:
-                formatted.append(format_units(x, decimals=dec))
-            return formatted
-
-
-def data_pos(data, xmin, xmax, buffer=5, in_bar=False):
-    """Return list of positions for data labels in bar graph"""
-    buff = max(abs(xmin), abs(xmax)) * (buffer / 100.)
-    data_pos = []
-    if in_bar:
-        for x in data:
-            if x >= 0:
-                data_pos.append(x - buff)
-            else:
-                data_pos.append(x + buff)
-    else:
-        for x in data:
-            if x >= 0:
-                data_pos.append(x + buff)
-            else:
-                data_pos.append(x - buff)
-
-    return data_pos
-
-
-def axtitle_footnote(rank_by, curr_bool):
-    """Generate tuple (plot title, footnote) for rank-by statistic and currency boolean."""
-    if curr_bool:
-        if rank_by == 'sales':
-            title = u'Cumulative Sales'
-            footnote = None
-        if rank_by == 'rate':
-            title = u'Normalized$^*$Rate of Gain/Loss \nin Daily Sales'
-            footnote = '* Daily sales data for each strain rescaled to (-$50, $50) then shifted to t0 = $0.00'
-        if rank_by == 'gain':
-            title = u'Avg Weekly Gain/Loss$^\u2020$ in Sales'
-            footnote = u'\u2020 Measured from baseline t0 = $0.00'
-    else:
-        if rank_by == 'sales':
-            title = u'Cumulative Units Sold'
-            footnote = None
-        if rank_by == 'rate':
-            title = u'Normalized$^*$Rate of Gain/Loss \nin Daily Units Sold'
-            footnote = u'* Daily sales data for each strain rescaled to (-50, 50) then shifted to t0 = 0 units.'
-        if rank_by == 'gain':
-            title = u'Avg Weekly Gain/Loss$^\u2020$ in Units Sold'
-            footnote = u'\u2020 Measured from baseline t0 = 0 units.'
-
-    return title, footnote
-
-
 def subtitle_y(fig_height):
     if fig_height >=14: return 0.825
     if fig_height >= 10: return 0.82
@@ -539,6 +405,169 @@ def hide_spines(ax):
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
 
+def format_currency(x, dollars=False, millions=False, decimals=2):
+    if x >= 0:
+        if millions:
+            return '${:.{prec}f} million'.format(x * 1e-6, prec=decimals)
+        if dollars:
+            return '${:,}'.format(int(round(x, 0)))
+        else:
+            return '${:.2f}'.format(x)
+    else:
+        if millions:
+            return '-${:.{prec}f} million'.format(abs(x * 1e-6), prec=decimals)
+        if dollars:
+            return '-${:,}'.format(int(round(abs(x), 0)))
+        else:
+            return '-${:.2f}'.format(abs(x))
+
+
+def format_units(x, round_to_int=False, millions=False, decimals=2):
+    if millions:
+        return '{:.{prec}f} million'.format(x * 1e-6, prec=decimals)
+    if round_to_int:
+        return '{:,}'.format(int(round(x, 0)))
+    else:
+        return '{:.{prec}f}'.format(x, prec=decimals)
+
+
+def default_data_format(x_arr, curr_bool, rank_by):
+    """Format data labels based on currency detection and max(abs(x))."""
+    formatted = []
+    max_x = max(max(x_arr), abs(min(x_arr)))
+    if curr_bool: # if currency
+        if max_x > 999999:
+            for i, x in enumerate(x_arr):
+                if i == len(x_arr)-1: # full format for first data point
+                    if rank_by == 'rate':
+                        formatted.append(format_currency(x, millions=True) + '/day')
+                    elif rank_by == 'gain':
+                        formatted.append(format_currency(x, millions=True) + '/week')
+                    else:
+                        formatted.append(format_currency(x, millions=True))
+                else:
+                    formatted.append(format_units(x * 1e-6))
+        elif max_x > 199:
+            for i, x in enumerate(x_arr):
+                if i == len(x_arr)-1:
+                    if rank_by == 'rate':
+                        formatted.append(format_currency(x, dollars=True) + '/day')
+                    elif rank_by == 'gain':
+                        formatted.append(format_currency(x, dollars=True) + '/week')
+                    else:
+                        formatted.append(format_currency(x, dollars=True))
+                else:
+                    formatted.append(format_units(x, round_to_int=True))
+        else:
+            for i, x in enumerate(x_arr):
+                if i == len(x_arr)-1:
+                    if rank_by == 'rate':
+                        formatted.append(format_currency(x, decimals=2) + '/day')
+                    elif rank_by == 'gain':
+                        formatted.append(format_currency(x, decimals=2) + '/week')
+                    else:
+                        formatted.append(format_currency(x, decimals=2))
+                else:
+                        formatted.append(format_units(x, decimals=2))
+    else: # if NOT currency...
+        if max_x > 999999:
+            for x in x_arr:
+                formatted.append(format_units(x, millions=True))
+        if max_x > 3:
+            for x in x_arr:
+                formatted.append(format_units(x, round_to_int=True))
+        else:
+            for x in x_arr:
+                formatted.append(format_units(x))
+
+    return formatted
+
+
+def manual_data_format(x_arr, curr_bool, millions_bool=None,
+                        ints_bool=None, dec=3):
+    """Format x_labels according to user specifications"""
+    formatted = []
+    if curr_bool:
+        if millions_bool:
+            for x in x_arr:
+                formatted.append(format_currency(x, millions=True,
+                                                    decimals=dec))
+            return formatted
+        elif ints_bool:
+            for x in x_arr:
+                formatted.append(format_currency(x, dollars=True))
+            return formatted
+        else:
+            for x in x_arr:
+                formatted.append(format_currency(x))
+            return formatted
+    else:
+        if millions_bool:
+            for x in x_arr:
+                formatted.append(format_units(x, millions=True,
+                                                decimals=dec))
+            return formatted
+        if ints_bool:
+            for x in x_arr:
+                formatted.append(format_units(x, round_to_int=True))
+            return formatted
+        else:
+            for x in x_arr:
+                formatted.append(format_units(x, decimals=dec))
+            return formatted
+
+
+def data_pos(data, xmin, xmax, buffer=5, in_bar=False):
+    """Return list of positions for data labels in bar graph"""
+    buff = max(abs(xmin), abs(xmax)) * (buffer / 100.)
+    data_pos = []
+    if in_bar:
+        for x in data:
+            if x >= 0:
+                data_pos.append(x - buff)
+            else:
+                data_pos.append(x + buff)
+    else:
+        for x in data:
+            if x >= 0:
+                data_pos.append(x + buff)
+            else:
+                data_pos.append(x - buff)
+
+    return data_pos
+
+
+def axtitle_footnote(rank_by, curr_bool):
+    """Generate tuple (plot title, footnote) for rank-by statistic and currency boolean."""
+    if curr_bool:
+        if rank_by == 'sales':
+            title = u'Cumulative Sales over Period\n'
+            footnote = None
+        if rank_by == 'rate':
+            title = (u'Rescaling trend lines to offset variation in sales volume among\n'
+                     u'products,$^*$ which show the steepest growth rates?\n')
+            footnote = (u'* Daily sales data for each strain rescaled to (-$50, $50)'
+                        u' then shifted to t0 = $0.00\n'
+                        u'   Rate then calculated from the slope of a straight line containing '
+                         u'area under trend curve.')
+        if rank_by == 'gain':
+            title = u'Uniform Weekly Growth Rate$^\u2020$ over Period\n'
+            footnote = (u'\u2020 Slope of straight line containing '
+                        u'area under trend curve\n   Data shifted to t0 = $0.00')
+    else:
+        if rank_by == 'sales':
+            title = u'Cumulative Units Sold over Period\n'
+            footnote = None
+        if rank_by == 'rate':
+            title = (u'Rescaling trend lines to offset variation in sales volume among\n'
+                     u'products,$^*$ which show the steepest growth rates?\n')
+            footnote = u'* Daily sales data for each strain rescaled to (-50, 50) then shifted to t0 = 0 units.'
+        if rank_by == 'gain':
+            title = u'Uniform Weekly Growth Rate$^\u2020$ over Period\n'
+            footnote = u'\u2020 Measured from baseline t0 = 0 units.'
+
+    return title, footnote
+
 
 def loc_format_value_label(x_arr, threshold=6, offset=0.02):
     """Return tuple (position, alignment, color) of value labels based on
@@ -637,15 +666,13 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
                             figsize=(8*len(rank_by), fig_height),
                             )
     if len(rank_by) > 1:
-        plt.suptitle(df.name, x=0, y=0.98, fontsize=20, fontweight='normal',
-                 va='top', ha='left')
+        plt.suptitle(df.name, x=0.5, y=0, fontsize=20, fontweight='normal',
+                 va='top', ha='center')
     else:
         title_parsed = df.name.split(' -- ')
-        fig_title, fig_subtitle = title_parsed[0], title_parsed[1]
-        plt.suptitle(fig_title, x=0, y=0.98, fontsize=20, fontweight='normal',
-                     va='top', ha='left')
-        plt.figtext(0, tuner, fig_subtitle, fontsize=16, fontweight='normal',
-                    va='top', ha='left')
+        fig_title = title_parsed[0] + '\n' + title_parsed[1]
+        plt.suptitle(fig_title, x=0.5, y=0, fontsize=20, fontweight='normal',
+                     va='top', ha='center')
 
     y_pos = range(len(df)) # positions for horizontal bars and product labels
 
@@ -656,6 +683,7 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
         axtitle, footnote = axtitle_footnote(rank_by[i], rank_on_sales)
         ax.set_title(axtitle, loc='left', fontsize=16, fontweight='bold',
                     va='bottom', ha='left')
+
         if footnote:
             ax.annotate(footnote, xy=(0,-0.1), xycoords='axes fraction', ha='left',
                        fontsize=10)
@@ -691,7 +719,7 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
             q = manual_data_label_format
             x_labels = manual_data_format(x, q[0], q[1], q[2], dec=q[3])
         else:
-            x_labels = default_data_format(x, rank_on_sales)
+            x_labels = default_data_format(x, rank_on_sales, rank_by[i])
 
         # optional small gap (bar-zero-space, bzs) between bars and zero line
         gap = zero_gap * x_scale
@@ -719,7 +747,7 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
                    ha=tup[1], va='center', color=tup[2], fontsize=12)
 
     plt.tight_layout()
-    plt.subplots_adjust(bottom=.1, top=.75)
+    plt.subplots_adjust(bottom=.2, top=.9)
 
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
