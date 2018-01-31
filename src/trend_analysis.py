@@ -64,16 +64,14 @@ class ImportSalesData(object):
 
     def _query_product_sales(self):
         self._query = ("""
-        SELECT CAST(DATE_TRUNC('day', ds.date_of_sale) AS DATE) as date
-         , st.strain_display_name as product_name
-         , st.generic_strain_id as product_id
-         , ROUND(SUM(ds.retail_price)) as ttl_sales
-         , ROUND(SUM(ds.retail_units)) as ttl_units_sold
-        FROM daily_retail_sales ds
-        JOIN strains st
-        ON ds.strain_name = st.strain_display_name
-        WHERE st.generic_strain_id = {}
-        GROUP BY date, st.strain_display_name, st.generic_strain_id
+        SELECT CAST(DATE_TRUNC('day', date_of_sale) AS DATE) as date
+         , strain_name as product_name
+         , generic_strain_id as product_id
+         , ROUND(SUM(retail_price)) as ttl_sales
+         , ROUND(SUM(retail_units)) as ttl_units_sold
+        FROM daily_sales
+        WHERE generic_strain_id = {}
+        GROUP BY date, strain_name, generic_strain_id
         ORDER BY date;
         """).format(self.product_id)
 

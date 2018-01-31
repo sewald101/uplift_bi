@@ -154,6 +154,41 @@ COPY daily_retail_sales
 FROM '/data/uplift/Data/TopRetailStrains.csv'
 DELIMITER ',' CSV HEADER;
 
+COPY daily_sales
+FROM '/data/uplift/Data/midLowRetailStrains.csv'
+DELIMITER ',' CSV HEADER;
+
+COPY daily_sales
+FROM '/data/uplift/Data/inventoryretailsales.csv'
+DELIMITER ',' CSV HEADER;
+
+/* CREATE TABLE FOR DAILY_SALES_DATA*/
+CREATE TABLE  daily_sales AS (
+  SELECT drs.record
+   , drs.date_of_sale
+   , drs.retailer_id
+   , drs.strain_name
+   , st.generic_strain_id
+   , drs.retail_price
+   , drs.retail_units
+  FROM daily_retail_sales drs
+  JOIN strains st
+  ON drs.strain_name = st.strain_display_name
+);
+
+
+/* QUERY for ImmportSalesData function*/
+SELECT CAST(DATE_TRUNC('day', date_of_sale) AS DATE) as date
+ , strain_name as product_name
+ , generic_strain_id as product_id
+ , ROUND(SUM(retail_price)) as ttl_sales
+ , ROUND(SUM(retail_units)) as ttl_units_sold
+FROM daily_sales
+WHERE generic_strain_id = 1118
+GROUP BY date, strain_name, generic_strain_id
+ORDER BY date;
+
+
 
 /* CREATE TABLE FOR product_skus */
 CREATE TABLE product_skus (
