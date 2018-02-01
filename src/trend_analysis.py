@@ -490,14 +490,22 @@ def column_sel(MA_param=None, exp_smooth_param=None, shifted=False, normed=False
     if smoothed and normed:
         return 5
 
-### Bug: RankProducts.main() only works with stats argument when the psdf is created with
-### a moving average; without MA, the psdf has no 'rate' or 'gain' cols
+
 class RankProducts(object):
     """Initialize with ProductStatsDF object and (optionally) by number of top
     results desired; Rank products by user_selected statistic
 
     METHOD:
-     -- main(): Rank products and populate attributes
+     -- main(): Rank products and populate attributes using kwargs:
+          * smoothed (bool, default = True) rank on statistics generated from
+              trend lines smoothed via moving average or exponential alpha;
+              False = rank on raw trend data
+          * stat (str or Nonetype, default = 'sales')
+              - 'sales' (default)= average weekly sales over period; NOTE:
+              - 'gain' = uniform weekly gain or loss over period
+              - 'rate' = growth rate index for products with data
+                  normalized (rescaled -100, 100) for sales volumes
+              -  None = prompts user for statistic from menu
 
     ATTRIBUTES:
      -- results: pandas DataFrame of products ranked by selected statistic
@@ -514,27 +522,40 @@ class RankProducts(object):
         self.ranked_df = None
 
 
-    def main(self, stat=None):
+    def main(self, smoothed=True, stat='sales'):
         """Rank N-top products by a user-selected statistic specified either by
-        optional stat argument or manualy by raw input
+        smoothed and stat keyword arguments, or manually by selection off of menu
 
         OUTPUT: class attributes -- results, ranked_IDs, ranked_df
 
-        ARGUMENT: stat (string), select exacly one or none
-          * 'rate' = growth rate index for products with data
-              normalized (rescaled -100, 100) for sales volumes
-          * 'gain' = uniform weekly gain or loss over period
-          * 'sales' = cumulative sales over period
+        ARGUMENTS:
+          * smoothed (bool, default = True) rank on statistics generated from
+              trend lines smoothed via moving average or exponentially;
+              False = rank on raw trend data
+          * stat (str or Nonetype, default = 'sales') rank products on ...
+              - 'sales' (default) = average weekly sales over period
+              - 'gain' = uniform weekly gain or loss over period
+              - 'rate' = growth rate for products with data
+                  normalized (rescaled -100, 100) for sales volumes
+              -  None = prompts user for selection of ranking statistic from menu
 
         """
 
         if stat:
             cols = self.product_stats_df.columns
-            tag = stat if stat != 'sales' else 'cumulative' # bug fix to work with sales or units
-            for i, c in enumerate(cols):
-                if tag in c:
-                    stat_idx = i
-                    stat_col = c
+            if stat == 'sales':
+                stat_idx = 2
+            if not smoothed and stat == 'gain':
+                stat_idx = 3
+            if not smoothed and stat == 'rate':
+                stat_idx = 4
+            if smoothed and stat == 'gain':
+                stat_idx = 5
+            if smoothed and stat == 'rate':
+                stat_idx = 6
+
+            stat_col = cols[stat_idx]
+
         else:
             stat_idx = self._sel_rank_by()
             stat_col = self.product_stats_df.columns[stat_idx]
