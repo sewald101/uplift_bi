@@ -151,7 +151,7 @@ class ProductTrendsDF(object):
         self.baseline = baseline
         self.product_name = self.ts.name.split('(')[0].strip()
         self.product_ID = int(self.ts.name.split(')')[0].split(' ')[-1])
-        self.sales_col_name = self.ts.name.split(' -- ')[-1]
+        self.sales_col_name = self.ts.name.split(' -- Daily ')[-1]
         self.ts_sample = None
         self.trendsDF = None
         self.trend_stats = OrderedDict()
@@ -176,6 +176,20 @@ class ProductTrendsDF(object):
 
         self.trendsDF.name = self._trendsDF_name()
 
+        if self.baseline == 't_zero':
+            self.trendsDF['SHIFTED to t0=0'] = \
+                self.trendsDF.iloc[:,0] - self.trendsDF.iloc[:,-1][0]
+        if self.baseline == 'mean':
+            self.trendsDF['SHIFTED to mean=0'] = \
+                self.trendsDF.iloc[:,0] - self.trendsDF.iloc[:-1].mean()
+        if self.baseline == 'median':
+            self.trendsDF['SHIFTED to median=0'] = \
+                self.trendsDF.iloc[:,0] - np.median(self.trendsDF.iloc[:,-1])
+
+
+        self.trendsDF['NORMD'] = \
+            self.norm_Series(self.trendsDF.iloc[:,0])
+
 
     def _compute_rolling_averages(self):
         self.raw_df = pd.DataFrame(self.ts)
@@ -188,13 +202,13 @@ class ProductTrendsDF(object):
                 self.raw_df[col_name][self.trendsDF.index].apply(rounder)
             # Shift moving averages to baseline
             if self.baseline == 't_zero':
-                self.trendsDF[col_name + ' SHIFTED'] = \
+                self.trendsDF[col_name + ' SHIFTED to t0=0'] = \
                     self.trendsDF[col_name] - self.trendsDF[col_name][0]
             if self.baseline == 'mean':
-                self.trendsDF[col_name + ' SHIFTED'] = \
+                self.trendsDF[col_name + ' SHIFTED to mean=0'] = \
                     self.trendsDF[col_name] - self.trendsDF[col_name].mean()
             if self.baseline == 'median':
-                self.trendsDF[col_name + ' SHIFTED'] = \
+                self.trendsDF[col_name + ' SHIFTED to median=0'] = \
                     self.trendsDF[col_name] - np.median(self.trendsDF[col_name])
 
             if self.normed:
@@ -207,12 +221,14 @@ class ProductTrendsDF(object):
 
 
     def aggregate_stats(self):
-        """Compute statistics on each data column and output as a dictionary
-        trend_stats attribute"""
+        """Compute statistics on each data column and output trend_stats attribute
+        (OrderedDict)"""
         self.trend_stats['product_name'] = self.product_name
         self.trend_stats['product_id'] = self.product_ID
-        self.trend_stats['cumulative ' + self.sales_col_name.lower()] = \
-            sum(self.trendsDF[self.trendsDF.columns[0]])
+        self.trend_stats['avg weekly ' + self.sales_col_name.lower()] = \
+            round(sum(self.trendsDF[self.trendsDF.columns[0]]) / self.period_wks,
+            0)
+
         if 'units' in self.sales_col_name.lower():
             sales_or_units = ' (units)'
         else:
@@ -220,23 +236,13 @@ class ProductTrendsDF(object):
 
         for column in self.trendsDF.columns[1:]:
             if 'NORMD' in column:
-                self.trend_stats[column + ' AUC'] = \
-                    self.trend_AUC(self.trendsDF[column])
                 self.trend_stats[column + ' growth rate'] = \
                     self.compute_aggr_slope(self.trendsDF[column])
 
-            elif 'SHIFTED' in column:
-                ## Un-comment two lines below for un-scaled AUC
-                # self.trend_stats[column + ' AUC'] = \
-                #     self.trend_AUC(self.trendsDF[column])
-                self.trend_stats[column + ' log-scaled AUC'] = \
-                    self.trend_AUC(self.trendsDF[column], log_scaled=True)
+            if 'SHIFTED' in column:
                 self.trend_stats[column + ' avg weekly gain' + sales_or_units] = \
                     round(7 * self.compute_aggr_slope(self.trendsDF[column]), 0)
 
-            else:
-                self.trend_stats[column + ' log-scaled AUC'] = \
-                    self.trend_AUC(self.trendsDF[column], log_scaled=True)
 
     def _slice_timeseries(self):
         """Construct ts_sample attribute"""
@@ -387,8 +393,8 @@ def CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
           then shift data such that t0 = 0.
      -- baseline: (str, default='t_zero') baseline for shifing data; values:
           * 't_zero' -- shift data by value at t0
-          * 'mean' -- shift data by the mean
-          * 'median' -- shift data by the median
+          * 'mean' -- shift data to mean = 0
+          * 'median' -- shift data to median = 0
      -- compute_on_sales: (bool, default=True) computes on sales data; if False,
           computes on units-sold data
     """
@@ -423,17 +429,21 @@ def CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
             E = seed_df.name.split('in ')[1]
             if col_index == 0:
                 title = E
-            if col_index == 1 and MA_param and not shifted:
+            if col_index == 1:
+                title = E + C
+            if col_index == 2:
+                title = E + D
+            if col_index == 3 and MA_param and not shifted:
                 title = A + E
-            if col_index == 1 and exp_smooth_param and not shifted:
+            if col_index == 3 and exp_smooth_param and not shifted:
                 title = E + B
-            if col_index == 2 and MA_param and shifted:
+            if col_index == 4 and MA_param and shifted:
                 title = A + E + C
-            if col_index == 2 and exp_smooth_param and shifted:
+            if col_index == 4 and exp_smooth_param and shifted:
                 title = E + B + C
-            if col_index == 3 and MA_param and normed:
+            if col_index == 5 and MA_param and normed:
                 title = A + E + D
-            if col_index == 3 and exp_smooth_param and normed:
+            if col_index == 5 and exp_smooth_param and normed:
                 title = E + B + D
 
             col_name = [stage_2.product_name]
@@ -457,9 +467,7 @@ def CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
 
             comp_trends_df[stage_2.product_name] = source_df.iloc[:,col_index]
 
-
     return comp_trends_df
-
 
 
 def column_sel(MA_param=None, exp_smooth_param=None, shifted=False, normed=False):
@@ -467,13 +475,20 @@ def column_sel(MA_param=None, exp_smooth_param=None, shifted=False, normed=False
     if MA_param or exp_smooth_param:
         smoothed = True
     else:
+        smoothed = False
+
+    if not smoothed and not (shifted or normed):
         return 0
-    if smoothed and not (shifted or normed):
+    if not smoothed and shifted:
         return 1
-    if smoothed and shifted:
+    if not smoothed and normed:
         return 2
-    if smoothed and normed:
+    if smoothed and not (shifted or normed):
         return 3
+    if smoothed and shifted:
+        return 4
+    if smoothed and normed:
+        return 5
 
 ### Bug: RankProducts.main() only works with stats argument when the psdf is created with
 ### a moving average; without MA, the psdf has no 'rate' or 'gain' cols
