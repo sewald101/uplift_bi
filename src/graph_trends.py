@@ -16,6 +16,7 @@ from trend_analysis import ProductTrendsDF # transforms single product data
 from trend_analysis import ProductStatsDF # compiles stats for multiple products
 from trend_analysis import CompTrendsDF # compares products by ts data
 from trend_analysis import RankProducts # returns ranked results
+from trend_analysis import HbarData
 
 
 """Graphic design adapted from: http://www.randalolson.com/2014/06/28/how-to-make-beautiful-data-visualizations-in-python-with-matplotlib/
@@ -54,7 +55,8 @@ def select_step(val_range, low, high, max_N_ticks=10):
     if low < 0:
         yaxis_range = high - low
 
-    steps = [1, 10, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000]
+    steps = [1, 10, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000,
+    25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000]
     for step in steps:
         if yaxis_range / step <= max_N_ticks:
             return step
@@ -143,7 +145,7 @@ def y_to_str(y): # format y-labels for graphs of dollar values
 def parse_title(str):
     A, B = str.split(' over ')[0], str.split(' over ')[1]
     if 'shift' in str.lower():
-        A = 'Change in ' + str.split(' over ')[0]
+        A = 'Trends in ' + str.split(' over ')[0]
     return (A, B)
 
 
@@ -338,66 +340,153 @@ Horizontal Bar Chart of Products Ranked by Statistic(s)
 
 """
 
+def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
+               rank_on_sales=True, MA_param=5, rank_by=['rate'], N_top=3,
+               fixed_order=True, fig_height=4,
+               x_buff=0.1, x_in_bar=6, manual_data_label_format=None,
+               zero_gap=0.00, write_path=None, tuner=0.86):
+    """
+    ARGUMENTS:
+     -- product_IDs: (list of ints) products for ranking
+     -- period_wks: (int, default=10) sample period for time series in weeks
+     -- end_date: (date string: '07/15/2016', default=None) date string defining
+          end of sampling period. Default uses most recent date in dataset.
+     -- rank_on_sales: (bool, default=True) ranks on sales data; if False,
+          ranks on units sold data
+     -- MA_param: (int or NoneType) return dataframe of moving averages; int defines "boxcar"
+          window, in weeks, by which to compute moving average; if None, computes
+          on raw trend data.
+     -- rank_by: (list of strings, default=['rate']) select statistic
+          by which to rank products in the primary and optional secondary
+          graphs in order of statistic. Values:
+          * 'rate' = growth rate index for products with data
+              normalized (rescaled -100, 100) for sales volumes
+          * 'gain' = uniform weekly gain or loss over period
+          * 'sales' = cumulative sales over period
+     -- N_top: (int, default=3) highlight N-top results
+     -- fixed_order: (bool, default=True) only rank products in the primary
+          graph and maintain that rank-order in secondary graphs; if False,
+          rank products in each graph
+     -- fig_height: (int, default=4) y-dimension of plt.figure
+     -- x_buff: (float, default=0.005) fraction of maximum absolute x-value
+          by which to set left and right margins of plot around bars
+     -- x_in_bar: (int, default=6) divisor of maximum abs x-value used to set
+          threshold for whether value labels appear outside of bars
+     -- manual_data_label_format: (tuple, default=None) override default x_label
+          formatting with the following ordered values in a tuple:
+          * format as currency (bool)
+          * format in millions (bool)
+          * round_to_int (bool)
+          * precision in decimals (int)
+          example: (True, True, False, 3) formats -1234567 as -$1.234M
+     -- zero_gap: (float, default=0.00) fraction of max abs x_value as width of
+          cosmetic whitespace between zero-line and bars; recommended value
+          if used: 0.01
+     -- write_path: (str, default=None) write graph to 'path/file'
 
+    """
 
-def get_data(product_IDs, period_wks=10, end_date=None,
-               rank_on_sales=True, MA=5,
-               rank_by=['rate'], fixed_order=True):
-    """Return a dataframe configured for custom plotting in HbarRanked function"""
-    prod_stats = ProductStatsDF(product_IDs, period_wks, end_date,
-                MA_params=[MA], compute_on_sales=rank_on_sales)
+    # Construct dataframe for graph(s)
+    df = HbarData(product_IDs, period_wks, end_date=end_date,
+               rank_on_sales=rank_on_sales, MA=MA_param,
+               rank_by=rank_by, fixed_order=fixed_order)
 
-    base_name = prod_stats.name + ' -- {}-Week Moving Average'.format(MA)
+    df_cols = df.columns
 
-    if len(rank_by) < 2 or fixed_order: # just need the RankProducts.results object
-        if len(rank_by) < 2:
-            rank_1 = RankProducts(prod_stats)
-            rank_1.main(rank_by[0])
-            data = rank_1.results
-            data.drop(['product_id'], axis=1, inplace=True)
-
-        else:
-            rank_1 = RankProducts(prod_stats)
-            rank_1.main(rank_by[0])
-            all_data = rank_1.ranked_df
-            df_cols = all_data.columns
-            cols = []
-            for stat in rank_by:
-                cols.append('product_name')
-                cols.append(grab_column(df_cols, stat))
-
-            data = all_data[cols]
-
-
-    if len(rank_by) > 1 and not fixed_order:
-            rank_1 = RankProducts(prod_stats)
-            rank_1.main(rank_by[0])
-            data = rank_1.results
-
-            for i, stat in enumerate(rank_by[1:]):
-                rank_next = RankProducts(prod_stats)
-                rank_next.main(stat)
-                next_ranked = rank_next.results
-                data['Ranking By {}'.format(stat)] = next_ranked.iloc[:,0].values
-                data[next_ranked.columns[-1]] = next_ranked.iloc[:,-1].values
-
-            data.drop(['product_id'], axis=1, inplace=True)
-
-    data = data[::-1] # reverse row order for matplotlib bar graphing
-    data.name = base_name
-
-    return data
-
-
-def grab_column(df_cols, stat):
-    """Get column title string from dataframe"""
-    if stat == 'sales':
-        tag = 'cumulative'
+    # Configure subplots
+    share_bool = 'all' if fixed_order else 'none'
+    fig, axs = plt.subplots(1, len(rank_by), squeeze=False, sharey=share_bool,
+                            figsize=(8*len(rank_by), fig_height),
+                            )
+    if len(rank_by) > 1:
+        plt.suptitle(df.name.split(' -- ')[0], x=0.5, y=0, fontsize=20, fontweight='normal',
+                 va='top', ha='center')
     else:
-        tag = stat
-    for c in df_cols:
-        if tag in c:
-            return c
+        title_parsed = df.name.split(' -- ')
+        fig_title = title_parsed[0] + '\n' + title_parsed[1]
+        plt.suptitle(fig_title, x=0.5, y=0, fontsize=20, fontweight='normal',
+                     va='top', ha='center')
+
+    y_pos = range(len(df)) # positions for horizontal bars and product labels
+
+    for i, ax in enumerate(axs.flatten()):
+
+        # format plot title
+#         stat_str = df.columns[(i*2)+1]
+        axtitle, footnote = axtitle_footnote(rank_by[i], rank_on_sales)
+        ax.set_title(axtitle, loc='left', fontsize=16, fontweight='bold',
+                    va='bottom', ha='left')
+
+        if footnote:
+            ax.annotate(footnote, xy=(0,-0.1), xycoords='axes fraction', ha='left',
+                       fontsize=10)
+        hide_spines(ax)
+
+        # format plot canvas(es)
+        ax.axvline(0, color='0.2', linewidth=1)
+        if not fixed_order and i != len(rank_by)-1:
+            ax.spines['right'].set_visible('True')
+        ax.tick_params(axis='y', which='both', bottom='off', top='off',
+                left='off', right='off', labelleft='on',
+                labelright='off', labelbottom='off')
+        ax.tick_params(axis='x', which='both', bottom='off', top='off',
+                left='off', right='off', labelleft='off',
+                labelright='off', labelbottom='off')
+        ax.axhline(y_pos[-1] + 0.5, ls='--', lw=0.5, color='0.8')
+        for y in y_pos:
+            ax.axhline(y - 0.5, ls='--', lw=0.5, color='0.8')
+
+        # format y axis
+        y_labels = df.iloc[:,(i*2)]
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(y_labels, ha='right', va='center',
+                           color='0.3', fontsize=12)
+
+        # get x data and format data labels
+        x = df.iloc[:,(i*2)+1]
+        x_scale = max(abs(min(x)), abs(max(x))) # largest bar
+        buff = x_buff * x_scale
+        ax.set_xlim(min(x) - buff, max(x) + buff)
+        xmin, xmax = ax.get_xlim()
+        if manual_data_label_format:
+            q = manual_data_label_format
+            x_labels = manual_data_format(x, q[0], q[1], q[2], dec=q[3])
+        else:
+            x_labels = default_data_format(x, rank_on_sales, rank_by[i])
+
+        # optional small gap (bar-zero-space, bzs) between bars and zero line
+        gap = zero_gap * x_scale
+        bzs = [gap if val > 0 else -1 * gap for val in x]
+
+        # Plot data
+        bars = ax.barh(y_pos, width=x-bzs, left=bzs, height=.8, color='0.5',
+                       alpha=0.7)
+        labels = ax.get_yticklabels()[::-1]
+
+        # Format bars and labels for N-top results
+        if not fixed_order or i==0:
+            for j, bar in enumerate(bars[::-1]):
+                if j < N_top:
+                    bar.set_color('green')
+                    labels[j]
+                    labels[j].set_color('green')
+                    labels[j].set_fontsize(16)
+                    labels[j].set_fontweight('bold')
+
+        # Add value labels to bars
+        val_pos = loc_format_value_label(x, threshold=x_in_bar)
+        for k, tup in enumerate(val_pos):
+            ax.text(tup[0], y_pos[k], x_labels[k],
+                   ha=tup[1], va='center', color=tup[2], fontsize=12)
+
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=.2, top=.9)
+
+    if write_path:
+        plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
+                   dpi=1000)
+    plt.show()
+
 
 def hide_spines(ax):
     ax.spines['bottom'].set_visible(False)
@@ -608,151 +697,6 @@ def loc_format_value_label(x_arr, threshold=6, offset=0.02):
     return zip(pos, aligns, color)
 
 
-def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
-               rank_on_sales=True, MA_param=5, rank_by=['rate'], N_top=3,
-               fixed_order=True, fig_height=4,
-               x_buff=0.1, x_in_bar=6, manual_data_label_format=None,
-               zero_gap=0.00, write_path=None, tuner=0.86):
-    """
-    ARGUMENTS:
-     -- product_IDs: (list of ints) products for ranking
-     -- period_wks: (int, default=10) sample period for time series in weeks
-     -- end_date: (date string: '07/15/2016', default=None) date string defining
-          end of sampling period. Default uses most recent date in dataset.
-     -- rank_on_sales: (bool, default=True) ranks on sales data; if False,
-          ranks on units sold data
-     -- MA_param: (int) return dataframe of moving averages; int defines "boxcar"
-          window, in weeks, by which to compute moving average
-     -- rank_by: (list of strings, default=['rate']) select statistic
-          by which to rank products in the primary and optional secondary
-          graphs in order of statistic. Values:
-          * 'rate' = growth rate index for products with data
-              normalized (rescaled -100, 100) for sales volumes
-          * 'gain' = uniform weekly gain or loss over period
-          * 'sales' = cumulative sales over period
-     -- N_top: (int, default=3) highlight N-top results
-     -- fixed_order: (bool, default=True) only rank products in the primary
-          graph and maintain that rank-order in secondary graphs; if False,
-          rank products in each graph
-     -- fig_height: (int, default=4) y-dimension of plt.figure
-     -- x_buff: (float, default=0.005) fraction of maximum absolute x-value
-          by which to set left and right margins of plot around bars
-     -- x_in_bar: (int, default=6) divisor of maximum abs x-value used to set
-          threshold for whether value labels appear outside of bars
-     -- manual_data_label_format: (tuple, default=None) override default x_label
-          formatting with the following ordered values in a tuple:
-          * format as currency (bool)
-          * format in millions (bool)
-          * round_to_int (bool)
-          * precision in decimals (int)
-          example: (True, True, False, 3) formats -1234567 as -$1.234M
-     -- zero_gap: (float, default=0.00) fraction of max abs x_value as width of
-          cosmetic whitespace between zero-line and bars; recommended value
-          if used: 0.01
-     -- write_path: (str, default=None) write graph to 'path/file'
-
-    """
-
-    # Construct dataframe for graph(s)
-    df = get_data(product_IDs, period_wks, end_date=end_date,
-               rank_on_sales=rank_on_sales, MA=MA_param,
-               rank_by=rank_by, fixed_order=fixed_order)
-
-    df_cols = df.columns
-
-    # Configure subplots
-    share_bool = 'all' if fixed_order else 'none'
-    fig, axs = plt.subplots(1, len(rank_by), squeeze=False, sharey=share_bool,
-                            figsize=(8*len(rank_by), fig_height),
-                            )
-    if len(rank_by) > 1:
-        plt.suptitle(df.name, x=0.5, y=0, fontsize=20, fontweight='normal',
-                 va='top', ha='center')
-    else:
-        title_parsed = df.name.split(' -- ')
-        fig_title = title_parsed[0] + '\n' + title_parsed[1]
-        plt.suptitle(fig_title, x=0.5, y=0, fontsize=20, fontweight='normal',
-                     va='top', ha='center')
-
-    y_pos = range(len(df)) # positions for horizontal bars and product labels
-
-    for i, ax in enumerate(axs.flatten()):
-
-        # format plot title
-#         stat_str = df.columns[(i*2)+1]
-        axtitle, footnote = axtitle_footnote(rank_by[i], rank_on_sales)
-        ax.set_title(axtitle, loc='left', fontsize=16, fontweight='bold',
-                    va='bottom', ha='left')
-
-        if footnote:
-            ax.annotate(footnote, xy=(0,-0.1), xycoords='axes fraction', ha='left',
-                       fontsize=10)
-        hide_spines(ax)
-
-        # format plot canvas(es)
-        ax.axvline(0, color='0.2', linewidth=1)
-        if not fixed_order and i != len(rank_by)-1:
-            ax.spines['right'].set_visible('True')
-        ax.tick_params(axis='y', which='both', bottom='off', top='off',
-                left='off', right='off', labelleft='on',
-                labelright='off', labelbottom='off')
-        ax.tick_params(axis='x', which='both', bottom='off', top='off',
-                left='off', right='off', labelleft='off',
-                labelright='off', labelbottom='off')
-        ax.axhline(y_pos[-1] + 0.5, ls='--', lw=0.5, color='0.8')
-        for y in y_pos:
-            ax.axhline(y - 0.5, ls='--', lw=0.5, color='0.8')
-
-        # format y axis
-        y_labels = df.iloc[:,(i*2)]
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(y_labels, ha='right', va='center',
-                           color='0.3', fontsize=12)
-
-        # get x data and format data labels
-        x = df.iloc[:,(i*2)+1]
-        x_scale = max(abs(min(x)), abs(max(x))) # largest bar
-        buff = x_buff * x_scale
-        ax.set_xlim(min(x) - buff, max(x) + buff)
-        xmin, xmax = ax.get_xlim()
-        if manual_data_label_format:
-            q = manual_data_label_format
-            x_labels = manual_data_format(x, q[0], q[1], q[2], dec=q[3])
-        else:
-            x_labels = default_data_format(x, rank_on_sales, rank_by[i])
-
-        # optional small gap (bar-zero-space, bzs) between bars and zero line
-        gap = zero_gap * x_scale
-        bzs = [gap if val > 0 else -1 * gap for val in x]
-
-        # Plot data
-        bars = ax.barh(y_pos, width=x-bzs, left=bzs, height=.8, color='0.5',
-                       alpha=0.7)
-        labels = ax.get_yticklabels()[::-1]
-
-        # Format bars and labels for N-top results
-        if not fixed_order or i==0:
-            for j, bar in enumerate(bars[::-1]):
-                if j < N_top:
-                    bar.set_color('green')
-                    labels[j]
-                    labels[j].set_color('green')
-                    labels[j].set_fontsize(16)
-                    labels[j].set_fontweight('bold')
-
-        # Add value labels to bars
-        val_pos = loc_format_value_label(x, threshold=x_in_bar)
-        for k, tup in enumerate(val_pos):
-            ax.text(tup[0], y_pos[k], x_labels[k],
-                   ha=tup[1], va='center', color=tup[2], fontsize=12)
-
-    plt.tight_layout()
-    plt.subplots_adjust(bottom=.2, top=.9)
-
-    if write_path:
-        plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
-                   dpi=1000)
-    plt.show()
 
 """
 ~~~~~~~~~~~~~~~~~~~~~~~

@@ -461,7 +461,7 @@ def CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
                 stage_1_ts = stage_1.units_sold
 
             stage_2 = ProductTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
-                            exp_smooth_param, normed)
+                            exp_smooth_param, normed, baseline)
             stage_2.main()
             source_df = stage_2.trendsDF
 
@@ -532,11 +532,11 @@ class RankProducts(object):
           * smoothed (bool, default = True) rank on statistics generated from
               trend lines smoothed via moving average or exponentially;
               False = rank on raw trend data
-          * stat (str or Nonetype, default = 'sales') rank products on ...
+          * stat (str or NoneType, default = 'sales') rank products on ...
               - 'sales' (default) = average weekly sales over period
               - 'gain' = uniform weekly gain or loss over period
-              - 'rate' = growth rate for products with data
-                  normalized (rescaled -100, 100) for sales volumes
+              - 'rate' = growth rate for products with trend data rescaled (-50, 50)
+                  to offset variation in overall sales volumes among products
               -  None = prompts user for selection of ranking statistic from menu
 
         """
@@ -590,6 +590,86 @@ class RankProducts(object):
             print(str(k) + ' -- ' + v)
         selection = int(raw_input('\nSelect statistic for ranking.'))
         return selection + 1
+
+"""
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+GENERATE DATA FOR BAR GRAPHS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+"""
+
+def HbarData(product_IDs, period_wks=10, end_date=None,
+               rank_on_sales=True, MA=5,
+               rank_by=['rate'], fixed_order=True):
+    """Return a dataframe configured for custom plotting in HbarRanked function"""
+
+    boxcar = [MA] if MA else None
+
+    prod_stats = ProductStatsDF(product_IDs, period_wks, end_date,
+                MA_params=boxcar, compute_on_sales=rank_on_sales)
+    if MA:
+        base_name = prod_stats.name + ' -- {}-Week Moving Average'.format(MA)
+    else:
+        base_name = prod_stats.name + ' -- '
+
+    if len(rank_by) < 2 or fixed_order: # just need the RankProducts.results object
+        if len(rank_by) < 2:
+            rank_1 = RankProducts(prod_stats)
+            if MA:
+                rank_1.main(stat=rank_by[0])
+            else:
+                rank_1.main(smoothed=False, stat=rank_by[0])
+            data = rank_1.results
+            data.drop(['product_id'], axis=1, inplace=True)
+
+        else:
+            rank_1 = RankProducts(prod_stats)
+            if MA:
+                rank_1.main(stat=rank_by[0])
+            else:
+                rank_1.main(smoothed=False, stat=rank_by[0])
+            all_data = rank_1.ranked_df
+            df_cols = all_data.columns
+            cols = []
+            for stat in rank_by:
+                cols.append('product_name')
+                cols.append(grab_column(df_cols, stat))
+
+            data = all_data[cols]
+
+
+    if len(rank_by) > 1 and not fixed_order:
+            rank_1 = RankProducts(prod_stats)
+            rank_1.main(rank_by[0])
+            data = rank_1.results
+
+            for i, rank_stat in enumerate(rank_by[1:]):
+                rank_next = RankProducts(prod_stats)
+                if MA:
+                    rank_next.main(stat=rank_stat)
+                else:
+                    rank_next.main(smoothed=False, stat=rank_stat)
+                next_ranked = rank_next.results
+                data['Ranking By {}'.format(rank_stat)] = next_ranked.iloc[:,0].values
+                data[next_ranked.columns[-1]] = next_ranked.iloc[:,-1].values
+
+            data.drop(['product_id'], axis=1, inplace=True)
+
+    data = data[::-1] # reverse row order for matplotlib bar graphing
+    data.name = base_name
+
+    return data
+
+
+def grab_column(df_cols, stat):
+    """Get column title string from dataframe"""
+    if stat == 'sales':
+        tag = 'weekly' # This works even though numerous cols have 'weekly'
+        # bc the sales column always appears first, triggering exit from function
+    else:
+        tag = stat
+    for c in df_cols:
+        if tag in c:
+            return c
 
 
 """
