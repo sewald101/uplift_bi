@@ -30,11 +30,13 @@ from collections import OrderedDict
 import matplotlib.pyplot as plt
 from sqlalchemy import create_engine
 
+from strain_dict import strain_dict, names_formatted, product_name_from_ID
+
 
 class ImportSalesData(object):
     """
     Query sales data from postgres and import to pandas data objects. Initialize
-    with product_id (int) then run main() method to populate attributes
+    with product ID (int) or name (string) then run main() method to populate attributes
 
     ATTRIBUTES:
      -- product_df: pandas time series (DataFrame) with daily sales in dollars and units
@@ -47,8 +49,9 @@ class ImportSalesData(object):
         via DataFrame.name and Series.name attributes
     """
 
-    def __init__(self, product_id):
-        self.product_id = product_id
+    def __init__(self, product):
+        self.product = product
+        self.product_id = None
         self.product_name = None
         self._query = None
         self._connection_str = 'postgresql:///uplift'
@@ -58,9 +61,17 @@ class ImportSalesData(object):
         self.units_sold = None
 
     def main(self):
+        self._retrieve_ID()
         self._query_product_sales()
         self._connect_to_postgres()
         self._SQL2pandasdf()
+
+    def _retrieve_ID(self):
+        if type(self.product) == str:
+            key = self.product.lower()
+            self.product_id = strain_dict[key]
+        else:
+            self.product_id = self.product
 
     def _query_product_sales(self):
         self._query = ("""
@@ -318,14 +329,15 @@ class ProductTrendsDF(object):
 
 
 
-def ProductStatsDF(product_IDs, period_wks, end_date=None, MA_params=None,
+def ProductStatsDF(products, period_wks, end_date=None, MA_params=None,
                   exp_smooth_params=None, normed=True, baseline='t_zero',
                   compute_on_sales=True):
     """Construct DataFrame showing comparative sales stats among multiple products.
     See output DataFrame.name attribute for title.
 
     ARGUMENTS:
-     -- product_IDs: (list of ints) list of product IDs for statistical comparison
+     -- products: (list of ints or strings) list of product names and/or IDs for
+          statistical comparison
      -- period_wks: (int) sampling period in weeks
 
      OPTIONAL
@@ -349,7 +361,7 @@ def ProductStatsDF(product_IDs, period_wks, end_date=None, MA_params=None,
     data = []
     counter = 0
     df_name = None
-    for product in product_IDs:
+    for product in products:
         raw_data = ImportSalesData(product)
         raw_data.main()
         if compute_on_sales:
@@ -371,7 +383,7 @@ def ProductStatsDF(product_IDs, period_wks, end_date=None, MA_params=None,
 
 
 
-def CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
+def CompTrendsDF(products, period_wks, end_date=None, MA_param=None,
                   exp_smooth_param=None, shifted=False, normed=False,
                   baseline='t_zero', compute_on_sales=True):
     """Construct DataFrame with time series across multiple products. Default
@@ -380,7 +392,8 @@ def CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
     may assign True to either shifted= or normed= arguments (NOT BOTH).
 
     ARGUMENTS:
-     -- product_IDs: (list of ints) list of product IDs for comparison
+     -- products: (list of ints or strings) product names and/or IDs for
+          statistical comparison
      -- period_wks: (int) sampling period in weeks
      -- end_date: (date string: '07/15/2016', default=None) date string defining
           end of sampling period. Default uses most recent date.
@@ -408,7 +421,7 @@ def CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
         exp_smooth_param = [exp_smooth_param]
     counter = 0
 
-    for product in product_IDs:
+    for product in products:
         if counter < 1: # Construct base dataframe from first product
             stage_1 = ImportSalesData(product)
             stage_1.main()
@@ -683,7 +696,7 @@ GENERATE BEST-SELLER DATA
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
-def BestSellerData(product_IDs, end_date=None, period_wks=10, MA_param=5,
+def BestSellerData(products, end_date=None, period_wks=10, MA_param=5,
             compute_on_sales=True, N_periods=10, freq='7D', rank_by='rate'):
     """Return dataframes summarizing rankings for products over a series
     of N-identical-length periods spaced at equal intervals.
@@ -695,11 +708,12 @@ def BestSellerData(product_IDs, end_date=None, period_wks=10, MA_param=5,
          df is suitable for slope-graphing.
 
     ARGUMENTS:
-     -- product_IDs: (list of ints)
+     -- products: (list of ints or strings) product names and/or IDs for
+          statistical comparison
      -- end_date: (date string of form 'MM/DD/YYYY', default=None) end_date of most recent
          ranking period; default uses most recent date in dataset.
      -- period_wks: (int, default=10) length of sampling periods in weeks
-     -- MA_param: (int or Nonetype, default=5) rolling "boxcar" window, in weeks, by which to
+     -- MA_param: (int or NoneType, default=5) rolling "boxcar" window, in weeks, by which to
           compute moving averages; None: ranks on non-smoothed (raw) trend data
      -- compute_on_sales: (bool, default=True) ranks on sales data; if False,
           ranks on units-sold data
@@ -720,7 +734,7 @@ def BestSellerData(product_IDs, end_date=None, period_wks=10, MA_param=5,
         end_dates = generate_dates(end_date, N_periods, freq)
     else: # If not provided as argument, grab most recent date in data index
         ### Bug?: if first product does not have latest date and dates do not overlap
-        imp = ImportSalesData(product_IDs[0])
+        imp = ImportSalesData(products[0])
         imp.main()
         seed_ts = imp.sales
         dt_obj = seed_ts.index[-1]
@@ -729,25 +743,27 @@ def BestSellerData(product_IDs, end_date=None, period_wks=10, MA_param=5,
 
     # Generate data consisting of product rankings over multiple periods
     data_A = OrderedDict()
-    name_dict = {} # to map names to IDs for df labels
+###    name_dict = {} # to map names to IDs for df labels
     for i, end_d in enumerate(end_dates):
         # compute stats on products
         if MA_param:
-            psdf = ProductStatsDF(product_IDs, period_wks=period_wks, end_date=end_d,
+            psdf = ProductStatsDF(products, period_wks=period_wks, end_date=end_d,
                     MA_params=[MA_param], normed=True, compute_on_sales=compute_on_sales
                             )
         else: # if no moving-avg sliding window provided, omit argument
-            psdf = ProductStatsDF(product_IDs, period_wks=period_wks, end_date=end_d,
+            psdf = ProductStatsDF(products, period_wks=period_wks, end_date=end_d,
                     normed=True, compute_on_sales=compute_on_sales
                             )
         # On first pass, populate name_dict
-        if i == 0:
-            for row in psdf.index:
-                prod_id = psdf.iloc[row].product_id
-                prod_name = psdf.iloc[row].product_name
-                name_dict[prod_id] = prod_name
+        # if i == 0:
+        #     for row in psdf.index:
+        #         prod_id = psdf.iloc[row].product_id
+        #         prod_name = psdf.iloc[row].product_name
+        #         name_dict[prod_id] = prod_name
 
-        # Generate rankings and add to data dictionary (data_A)
+        # Generate rankings and add to data dictionary (data_A) where keys are
+        # the end_dates of the comparison periods and values are the product IDs
+        # ordered by rank
         ranked = RankProducts(psdf)
         if MA_param:
             ranked.main(smoothed=True, stat=rank_by)
@@ -755,24 +771,32 @@ def BestSellerData(product_IDs, end_date=None, period_wks=10, MA_param=5,
             ranked.main(smoothed=False, stat=rank_by)
         data_A[end_d] = ranked.ranked_IDs
 
-    # Reconfigure data into dict of rankings by product
+    # Reconfigure data_A into a dictionary (data_B) of keys=products, vals=list
+    # of a product's rankings over the series of comparison periods
     data_B = OrderedDict()
-    for prod in product_IDs:
-        data_B[name_dict[prod]] = []
+    for prod in products:
+        if type(prod) == str:
+            data_B[prod.lower()] = []
+        else:
+            data_B[product_name_from_ID(prod)] = []
     for prod_arr in data_A.itervalues():
         for i, prod in enumerate(prod_arr):
-            data_B[name_dict[prod]].append(i+1) # i+1 represents product rank
+            if type(prod) == str:
+                data_B[prod.lower()].append(i+1) # i+1 represents product rank
+            else:
+                data_B[product_name_from_ID(prod)].append(i+1)
 
     # Construct output dataframes
     mask = lambda x: datetime.strptime(x, '%m/%d/%Y')
-    date_idx = [mask(dt) for dt in end_dates] # DatetimeIndex for df_B
+    date_idx = [mask(dt) for dt in end_dates] # for DatetimeIndex of df_B
 
     title = best_seller_title(MA_param, compute_on_sales, N_periods,
                           period_wks, rank_by, freq)
 
-    df_A = pd.DataFrame(data_A, index=range(1, len(product_IDs)+1))
-            # index of df_A represents rank levels 1 to N
+    df_A = pd.DataFrame(data_A, index=range(1, len(products)+1))
+    # index of df_A represents rank levels 1 to N
     df_B = pd.DataFrame(data_B, index=date_idx)
+
     # Sort df_B columns by cumulative rankings
     sum_o_ranks = df_B.sum()
     foo = sum_o_ranks.sort_values(ascending=True)
@@ -782,7 +806,8 @@ def BestSellerData(product_IDs, end_date=None, period_wks=10, MA_param=5,
     df_A.name = title
     df_B.name = title
 
-    labels = [name_dict[PID] for PID in df_A.iloc[:,-1]]
+    labels = [names_formatted[product_name_from_ID(prod_ID)] \
+              for prod_ID in df_A.iloc[:,-1]]
     label_pos = df_B.iloc[-1,:].values
     labeler = zip(label_pos, labels)
 
@@ -820,12 +845,11 @@ def best_seller_title(MA_param, compute_on_sales, N_periods, period_wks,
     "Construct title (pandas.DataFrame.name) for BestSellerData objects."
 
     if rank_by == 'rate':
-        alpha = ('Growth Rate with Trends Rescaled to Offset Variation in Overall '
-        'Sales Volume among Products')
+        alpha = 'Relative Growth Rate'
     if rank_by == 'gain':
-        alpha = 'Average Weekly Gain/Loss in Sales over Period'
+        alpha = 'Uniform Weekly Gain/Loss in Sales over Period'
     if rank_by == 'sales':
-        alpha = 'Average Weekly Sales over Period'
+        alpha = 'Avg Weekly Sales over Period'
     A = 'Products Ranked by {}'.format(alpha)
 
     beta = 'Sales ' if compute_on_sales else 'Units Sold '
