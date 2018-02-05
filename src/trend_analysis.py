@@ -603,13 +603,13 @@ def HbarData(product_IDs, period_wks=10, end_date=None,
     """Return a dataframe configured for custom plotting in HbarRanked function"""
 
     boxcar = [MA] if MA else None
-
     prod_stats = ProductStatsDF(product_IDs, period_wks, end_date,
                 MA_params=boxcar, compute_on_sales=rank_on_sales)
     if MA:
         base_name = prod_stats.name + ' -- {}-Week Moving Average'.format(MA)
     else:
         base_name = prod_stats.name + ' -- '
+
 
     if len(rank_by) < 2 or fixed_order: # just need the RankProducts.results object
         if len(rank_by) < 2:
@@ -630,9 +630,9 @@ def HbarData(product_IDs, period_wks=10, end_date=None,
             all_data = rank_1.ranked_df
             df_cols = all_data.columns
             cols = []
-            for stat in rank_by:
+            for rank_stat in rank_by:
                 cols.append('product_name')
-                cols.append(grab_column(df_cols, stat))
+                cols.append(df_cols[grab_column(stat=rank_stat, smoothed=MA)])
 
             data = all_data[cols]
 
@@ -660,16 +660,21 @@ def HbarData(product_IDs, period_wks=10, end_date=None,
     return data
 
 
-def grab_column(df_cols, stat):
-    """Get column title string from dataframe"""
+def grab_column(stat, smoothed):
+    """Return index for data column in HbarData fixed_order bar graph"""
     if stat == 'sales':
-        tag = 'weekly' # This works even though numerous cols have 'weekly'
-        # bc the sales column always appears first, triggering exit from function
-    else:
-        tag = stat
-    for c in df_cols:
-        if tag in c:
-            return c
+        return 2
+    if not smoothed and stat == 'gain':
+        return 3
+    if not smoothed and stat == 'rate':
+        return 4
+    if smoothed and stat == 'gain':
+        return 5
+    if smoothed and stat == 'rate':
+        return 6
+
+
+
 
 
 """

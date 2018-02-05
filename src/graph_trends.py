@@ -418,7 +418,7 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
                     va='bottom', ha='left')
 
         if footnote:
-            ax.annotate(footnote, xy=(0,-0.1), xycoords='axes fraction', ha='left',
+            ax.annotate(footnote, xy=(0,-0.2), xycoords='axes fraction', ha='left',
                        fontsize=10)
         hide_spines(ax)
 
@@ -558,16 +558,57 @@ def default_data_format(x_arr, curr_bool, rank_by):
                         formatted.append(format_currency(x, decimals=2))
                 else:
                         formatted.append(format_units(x, decimals=2))
+
     else: # if NOT currency...
         if max_x > 999999:
-            for x in x_arr:
-                formatted.append(format_units(x, millions=True))
-        if max_x > 3:
-            for x in x_arr:
-                formatted.append(format_units(x, round_to_int=True))
+            for i, x in enumerate(x_arr):
+                if i == len(x_arr)-1: # full format for first data point
+                    if rank_by == 'rate':
+                        formatted.append(
+                        format_units(x, millions=True) + ' units/day'
+                        )
+                    elif rank_by == 'gain':
+                        formatted.append(
+                        format_units(x, millions=True) + ' units/week'
+                        )
+                    else:
+                        formatted.append(format_units(x, millions=True))
+                else:
+                    formatted.append(format_units(x * 1e-6))
+
+        if max_x > 50:
+            for i, x in enumerate(x_arr):
+                if i == len(x_arr)-1:
+                    if rank_by == 'rate':
+                        formatted.append(
+                        format_currency(x, round_to_int=True) + ' units/day'
+                        )
+                    elif rank_by == 'gain':
+                        formatted.append(
+                        format_currency(x, round_to_int=True) + ' units/week'
+                        )
+                    else:
+                        formatted.append(
+                        format_units(x, round_to_int=True) + 'units'
+                        )
+                else:
+                    formatted.append(format_units(x, round_to_int=True))
+
         else:
-            for x in x_arr:
-                formatted.append(format_units(x))
+            for i, x in enumerate(x_arr):
+                if i == len(x_arr)-1:
+                    if rank_by == 'rate':
+                        formatted.append(
+                        format_units(x, decimals=2) + ' units/day'
+                        )
+                    elif rank_by == 'gain':
+                        formatted.append(
+                        format_units(x, decimals=2) + ' units/week'
+                        )
+                    else:
+                        formatted.append(format_units(x) + 'units')
+                else:
+                    formatted.append(format_units(x))
 
     return formatted
 
@@ -628,32 +669,28 @@ def data_pos(data, xmin, xmax, buffer=5, in_bar=False):
 
 def axtitle_footnote(rank_by, curr_bool):
     """Generate tuple (plot title, footnote) for rank-by statistic and currency boolean."""
-    if curr_bool:
-        if rank_by == 'sales':
-            title = u'Cumulative Sales over Period\n'
+    sym = '$' if curr_bool else ''
+    if rank_by == 'sales':
+        if curr_bool:
+            title = u'Avg Weekly Sales over Period\n'
             footnote = None
-        if rank_by == 'rate':
-            title = (u'Rescaling trend lines to offset variation in sales volume among\n'
-                     u'products,$^*$ which show the steepest growth rates?\n')
-            footnote = (u'* Daily sales data for each strain rescaled to (-$50, $50)'
-                        u' then shifted to t0 = $0.00\n'
-                        u'   Rate then calculated from the slope of a straight line containing '
-                         u'area under trend curve.')
-        if rank_by == 'gain':
-            title = u'Uniform Weekly Growth Rate$^\u2020$ over Period\n'
-            footnote = (u'\u2020 Slope of straight line containing '
-                        u'area under trend curve\n   Data shifted to t0 = $0.00')
-    else:
-        if rank_by == 'sales':
-            title = u'Cumulative Units Sold over Period\n'
+        else:
+            title = u'Avg Weekly Units Sold over Period\n'
             footnote = None
-        if rank_by == 'rate':
-            title = (u'Rescaling trend lines to offset variation in sales volume among\n'
-                     u'products,$^*$ which show the steepest growth rates?\n')
-            footnote = u'* Daily sales data for each strain rescaled to (-50, 50) then shifted to t0 = 0 units.'
-        if rank_by == 'gain':
-            title = u'Uniform Weekly Growth Rate$^\u2020$ over Period\n'
-            footnote = u'\u2020 Measured from baseline t0 = 0 units.'
+    if rank_by == 'rate':
+        title = (u'Relative Growth Rates$^*$ over Period\n')
+        footnote = (
+        u'* Daily sales data for each strain rescaled to (-{}50, {}50)'
+        u' then shifted to t0 = {}0.00\n'
+        u'   Rate then calculated from the slope of a straight '
+        u'line containing area under trend curve.'.format(sym, sym, sym)
+        )
+    if rank_by == 'gain':
+        title = u'Uniform Weekly Growth Rates$^\u2020$ over Period\n'
+        footnote = (
+        u'\u2020 Slope of straight line containing '
+        u'area under trend curve\n   Data shifted to t0 = {}0.00'.format(sym)
+        )
 
     return title, footnote
 
