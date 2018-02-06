@@ -23,198 +23,6 @@ from trend_analysis import HbarData
 """Graphic design adapted from: http://www.randalolson.com/2014/06/28/how-to-make-beautiful-data-visualizations-in-python-with-matplotlib/
 """
 
-def rescale_RGB(RGB_palette):
-    """Input list of RGB tuples; return list of tuples rescaled (0, 1)"""
-    scaled_palette = []
-    for i in range(len(RGB_palette)):
-        r, g, b = RGB_palette[i]
-        scaled_palette.append((r / 255., g / 255., b / 255.))
-    return scaled_palette
-
-
-def range_vals(df):
-    """Input CompTrendsDF object; return range, min and max values (tuple) among
-    all products
-    """
-    stats_df = df.describe()
-    minimum = stats_df.loc['min',].min()
-    maximum = stats_df.loc['max',].max()
-    return (maximum - minimum, minimum, maximum)
-
-
-def select_step(val_range, low, high, max_N_ticks=10):
-    # Set y_axis range on which to calculate step
-    digits = lambda x: len(str(int(x)))
-    range_digits = digits(val_range)
-    low_digits = digits(low)
-    high_digits = digits(high)
-    if low >= 0:
-        if range_digits == high_digits:
-            yaxis_range = high
-        if range_digits < high_digits:
-            yaxis_range = high - low
-    if low < 0:
-        yaxis_range = high - low
-
-    steps = [1, 10, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000,
-    25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000]
-    for step in steps:
-        if yaxis_range / step <= max_N_ticks:
-            return step
-
-
-def round_to_step(val_range, low, high, max_N_ticks=10):
-    """Round max or abs(min) ytick value down or up to next step"""
-    step = select_step(val_range, low, high, max_N_ticks)
-    multiple = (int(high) / step) + 1
-    return step * multiple
-
-
-def round_down_to_step(val_range, low, high, max_N_ticks=10):
-    """Round low ytick value down to next step"""
-    step = select_step(val_range, low, high, max_N_ticks)
-    if low >= 0:
-        multiple = (int(low) / step)
-        return step * multiple
-    else:
-        multiple = abs(int(low) / step)
-        return -1 * step * multiple
-
-
-def round_up_to_pwr(high_val, range_val):
-    """Round up to nearest power of 10 of range_val; e.g. 9340 >> 10000"""
-    power = lambda x: len(str(int(x))) - 1 # get power of 10
-    r_pwr = power(range_val)
-
-    return int(np.ceil(high_val / 10**(r_pwr))*10**(r_pwr))
-
-
-def round_down_to_pwr(low_val, range_val):
-    """Round down to nearest power of 10 of range_val; e.g. 9340 >> 9000"""
-    power = lambda x: len(str(int(x))) - 1 # get power of 10
-    r_pwr = digits(range_val)
-
-    return int(np.floor(low_val / 10**(r_pwr))*10**(r_pwr))
-
-
-def ylims(val_range, low, high, max_N_ticks=10):
-    """Return y_limits tuple (y_low, y_high) based on df value range"""
-    digits = lambda x: len(str(int(x)))
-    range_digits = digits(val_range)
-    high_digits = digits(high)
-    low_digits = digits(low)
-
-    if low >= 0:
-        if range_digits == high_digits:
-            y_low = 0
-            y_high = round_to_step(val_range, low, high, max_N_ticks)
-
-        elif range_digits < high_digits:
-            y_low = round_down_to_step(val_range, low, high, max_N_ticks)
-            y_high = round_to_step(val_range, low, high, max_N_ticks)
-
-    if low < 0:
-        y_low = round_down_to_step(val_range, low, high, max_N_ticks)
-        y_high = round_to_step(val_range, low, high, max_N_ticks)
-
-    return y_low, y_high
-
-
-def space_yticks(y_low, y_high, step, trunc_yticks=False):
-    "Return list of y-coordinates for yticks"
-    if y_low >= 0:
-        if trunc_yticks:
-            return range(y_low, y_high + step, step)
-        else:
-            return range(0, y_high + step, step)
-    else:
-        yticks = range(0, y_low - step, -step) # start w/ negative ticks
-        yticks.reverse()
-        yticks.remove(0)
-        pos_ticks = range(0, y_high + step, step)
-        yticks.extend(pos_ticks)
-        return yticks
-
-
-def y_to_str(y): # format y-labels for graphs of dollar values
-    if y >= 0:
-        return '$' + str(y)
-    else:
-        return '-$' + str(abs(y))
-
-
-def parse_title(str):
-    A, B = str.split(' over ')[0], str.split(' over ')[1]
-    if 'shift' in str.lower():
-        A = 'Trends in ' + str.split(' over ')[0]
-    return (A, B)
-
-
-def title_subtitle_footnote(ranked_df):
-    """Take in RankProducts.results object; return title, subtitle and
-    footnote for graphs"""
-    name_str = ranked_df.name
-    stat_str = ranked_df.columns[2]
-    title, subtitle, footnote = None, None, None
-
-    # string elements
-    sales_bool = 'Sales' if 'sales' in name_str.lower() else 'Units Sold'
-    MA = stat_str.split('wk')[0]
-    period_str = name_str.split(' over ')[-1]
-    shifted_str = 'Data Shifted (t0 = 0)'
-    normed_str = 'Computed on Data Rescaled (-1, 1) then Shifted (T0 = 0)'
-
-    if 'cumulative' in stat_str.lower():
-        title = 'Cumulative Total ' + sales_bool + ' over ' + period_str
-
-    if 'ma log' in stat_str.lower():
-        title = 'Log-Areas under {}Wk-MA Trends in Daily {}'.format(
-            MA, sales_bool)
-        subtitle = period_str
-
-    if 'shifted log' in stat_str.lower():
-        title = 'Log-Areas under {}Wk-MA Gain/Loss in Daily {}'.format(
-            MA, sales_bool)
-        subtitle = period_str
-        footnote = 'NOTE: Computed on Data Shifted to t0=0.'
-
-    if 'gain' in stat_str.lower():
-        title = 'Weekly Gain/Loss* in {}Wk-MA Trends in Daily {}'.format(
-            MA, sales_bool)
-        subtitle = period_str
-        footnote = ('*NOTE: Computed by redistributing trend AUCs\
- under straight lines then taking the slopes.')
-
-    if 'normd auc' in stat_str.lower():
-        title = 'Areas under Normalized* {}Wk-MA Trends in Daily {}'\
-            .format(MA, sales_bool)
-        subtitle = period_str
-        footnote = '*NOTE: Computed on sales data rescaled (-50, 50) then shifted (t0=0).'
-
-    if 'normd growth' in stat_str.lower():
-        title = 'Normalized Growth Rates* of {}Wk-MA Trends in Daily {}'\
-            .format(MA, sales_bool)
-        subtitle = period_str
-        footnote = """*NOTE: Rates of daily growth normalized for sales volumes
-Data rescaled to (-50, 50) then shifted (t0=0)."""
-
-    return title, subtitle, footnote
-
-
-
-def subtitle_y(fig_height):
-    if fig_height >=14: return 0.825
-    if fig_height >= 10: return 0.82
-    elif fig_height <= 5: return 0.79
-    elif fig_height <= 7: return 0.80
-    else: return 0.81
-
-
-def write_file_name(df):
-    A = '{}wk_MA'.format(df.name.split('-')[0])
-    B = '_{}'.format(df.name.split(' ')[5])
-    path = '../img/{}.{}'.format(A+B, file_format)
-    return path
 
 """
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -288,7 +96,7 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
     # Format x_major ticks with month name at each beginning of month
     plt.tick_params(axis='x', which='major', bottom='off', top='off',
                     left='off', right='off', labelbottom='on', pad=10,
-                    labelsize=14, rotation=45)
+                    labelsize=14, labelrotation=45)
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
 
@@ -820,7 +628,7 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
         # Format x_major ticks with month name at each beginning of month
         ax.tick_params(axis='x', which='major', bottom='off', top='off',
                         left='off', right='off', labelbottom='on', pad=10,
-                        labelsize=14, rotation=45)
+                        labelsize=14, labelrotation=45)
         ax.xaxis.set_major_locator(mdates.MonthLocator())
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
 
@@ -871,7 +679,7 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
 
     plt.tight_layout()
     footer = {1:0.30, 2:0.15, 3:0.10, 4:0.075, 5:0.06}
-    fig.subplots_adjust(bottom=footer[len(product_IDs)], top=.85, hspace=0.6)
+    fig.subplots_adjust(bottom=footer[len(products)], top=.85, hspace=0.6)
 
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
@@ -886,7 +694,8 @@ Plot BestSellerData
 ~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
-def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5):
+def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5,
+                    write_path=None):
     """
     Plot BestSellerData object -- rankings over consecutive periods.
 
@@ -897,6 +706,8 @@ def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5):
        to highlight
     footnote_pad: (float) factor to set padding for footnote beneath
        x-axis label
+    write_path: (str, default=None) write graph to 'path/file'
+
     """
 
     # Reverse sign of data to enable plotting with 1 at y_axis top
@@ -927,10 +738,10 @@ def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5):
     ax.set_xticks(df.index)
     ax.tick_params(axis='x', which='both', bottom='off', top='off',
                    left='off', right='off', labelbottom='on',
-                   pad=5, labelsize=14, rotation=90)
+                   pad=5, labelsize=14)
 
     x_labels = BestSeller_x_labels(df.index)
-    ax.set_xticklabels(x_labels)
+    ax.set_xticklabels(x_labels, rotation=90)
     ax.set_xlabel('Period Ending', fontsize=16, labelpad=15)
 
 
@@ -971,6 +782,11 @@ def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5):
 
     plt.tight_layout()
     plt.subplots_adjust(bottom=.3, top=.9)
+
+    if write_path:
+        plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
+                   dpi=1000)
+
     plt.show()
 
 
@@ -1032,3 +848,202 @@ def BestSeller_x_labels(df_index):
             x_labels.append(datetime.strftime(dt, dt_form_A))
 
     return x_labels
+
+"""
+~~~~~~~~~~~~~~~~~~~~~~~
+Supporting, Multi-Use Functions
+~~~~~~~~~~~~~~~~~~~~~~~~
+"""
+
+
+def rescale_RGB(RGB_palette):
+    """Input list of RGB tuples; return list of tuples rescaled (0, 1)"""
+    scaled_palette = []
+    for i in range(len(RGB_palette)):
+        r, g, b = RGB_palette[i]
+        scaled_palette.append((r / 255., g / 255., b / 255.))
+    return scaled_palette
+
+
+def range_vals(df):
+    """Input CompTrendsDF object; return range, min and max values (tuple) among
+    all products
+    """
+    stats_df = df.describe()
+    minimum = stats_df.loc['min',].min()
+    maximum = stats_df.loc['max',].max()
+    return (maximum - minimum, minimum, maximum)
+
+
+def select_step(val_range, low, high, max_N_ticks=10):
+    # Set y_axis range on which to calculate step
+    digits = lambda x: len(str(int(x)))
+    range_digits = digits(val_range)
+    low_digits = digits(low)
+    high_digits = digits(high)
+    if low >= 0:
+        if range_digits == high_digits:
+            yaxis_range = high
+        if range_digits < high_digits:
+            yaxis_range = high - low
+    if low < 0:
+        yaxis_range = high - low
+
+    steps = [1, 10, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000,
+    25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000]
+    for step in steps:
+        if yaxis_range / step <= max_N_ticks:
+            return step
+
+
+def round_to_step(val_range, low, high, max_N_ticks=10):
+    """Round max or abs(min) ytick value down or up to next step"""
+    step = select_step(val_range, low, high, max_N_ticks)
+    multiple = (int(high) / step) + 1
+    return step * multiple
+
+
+def round_down_to_step(val_range, low, high, max_N_ticks=10):
+    """Round low ytick value down to next step"""
+    step = select_step(val_range, low, high, max_N_ticks)
+    if low >= 0:
+        multiple = (int(low) / step)
+        return step * multiple
+    else:
+        multiple = abs(int(low) / step)
+        return -1 * step * multiple
+
+
+def round_up_to_pwr(high_val, range_val):
+    """Round up to nearest power of 10 of range_val; e.g. 9340 >> 10000"""
+    power = lambda x: len(str(int(x))) - 1 # get power of 10
+    r_pwr = power(range_val)
+
+    return int(np.ceil(high_val / 10**(r_pwr))*10**(r_pwr))
+
+
+def round_down_to_pwr(low_val, range_val):
+    """Round down to nearest power of 10 of range_val; e.g. 9340 >> 9000"""
+    power = lambda x: len(str(int(x))) - 1 # get power of 10
+    r_pwr = digits(range_val)
+
+    return int(np.floor(low_val / 10**(r_pwr))*10**(r_pwr))
+
+
+def ylims(val_range, low, high, max_N_ticks=10):
+    """Return y_limits tuple (y_low, y_high) based on df value range"""
+    digits = lambda x: len(str(int(x)))
+    range_digits = digits(val_range)
+    high_digits = digits(high)
+    low_digits = digits(low)
+
+    if low >= 0:
+        if range_digits == high_digits:
+            y_low = 0
+            y_high = round_to_step(val_range, low, high, max_N_ticks)
+
+        elif range_digits < high_digits:
+            y_low = round_down_to_step(val_range, low, high, max_N_ticks)
+            y_high = round_to_step(val_range, low, high, max_N_ticks)
+
+    if low < 0:
+        y_low = round_down_to_step(val_range, low, high, max_N_ticks)
+        y_high = round_to_step(val_range, low, high, max_N_ticks)
+
+    return y_low, y_high
+
+
+def space_yticks(y_low, y_high, step, trunc_yticks=False):
+    "Return list of y-coordinates for yticks"
+    if y_low >= 0:
+        if trunc_yticks:
+            return range(y_low, y_high + step, step)
+        else:
+            return range(0, y_high + step, step)
+    else:
+        yticks = range(0, y_low - step, -step) # start w/ negative ticks
+        yticks.reverse()
+        yticks.remove(0)
+        pos_ticks = range(0, y_high + step, step)
+        yticks.extend(pos_ticks)
+        return yticks
+
+
+def y_to_str(y): # format y-labels for graphs of dollar values
+    if y >= 0:
+        return '$' + str(y)
+    else:
+        return '-$' + str(abs(y))
+
+
+def parse_title(str):
+    A, B = str.split(' over ')[0], str.split(' over ')[1]
+    if 'shift' in str.lower():
+        A = 'Trends in ' + str.split(' over ')[0]
+    return (A, B)
+
+
+def title_subtitle_footnote(ranked_df):
+    """Take in RankProducts.results object; return title, subtitle and
+    footnote for graphs"""
+    name_str = ranked_df.name
+    stat_str = ranked_df.columns[2]
+    title, subtitle, footnote = None, None, None
+
+    # string elements
+    sales_bool = 'Sales' if 'sales' in name_str.lower() else 'Units Sold'
+    MA = stat_str.split('wk')[0]
+    period_str = name_str.split(' over ')[-1]
+    shifted_str = 'Data Shifted (t0 = 0)'
+    normed_str = 'Computed on Data Rescaled (-1, 1) then Shifted (T0 = 0)'
+
+    if 'cumulative' in stat_str.lower():
+        title = 'Cumulative Total ' + sales_bool + ' over ' + period_str
+
+    if 'ma log' in stat_str.lower():
+        title = 'Log-Areas under {}Wk-MA Trends in Daily {}'.format(
+            MA, sales_bool)
+        subtitle = period_str
+
+    if 'shifted log' in stat_str.lower():
+        title = 'Log-Areas under {}Wk-MA Gain/Loss in Daily {}'.format(
+            MA, sales_bool)
+        subtitle = period_str
+        footnote = 'NOTE: Computed on Data Shifted to t0=0.'
+
+    if 'gain' in stat_str.lower():
+        title = 'Weekly Gain/Loss* in {}Wk-MA Trends in Daily {}'.format(
+            MA, sales_bool)
+        subtitle = period_str
+        footnote = ('*NOTE: Computed by redistributing trend AUCs\
+ under straight lines then taking the slopes.')
+
+    if 'normd auc' in stat_str.lower():
+        title = 'Areas under Normalized* {}Wk-MA Trends in Daily {}'\
+            .format(MA, sales_bool)
+        subtitle = period_str
+        footnote = '*NOTE: Computed on sales data rescaled (-50, 50) then shifted (t0=0).'
+
+    if 'normd growth' in stat_str.lower():
+        title = 'Normalized Growth Rates* of {}Wk-MA Trends in Daily {}'\
+            .format(MA, sales_bool)
+        subtitle = period_str
+        footnote = """*NOTE: Rates of daily growth normalized for sales volumes
+Data rescaled to (-50, 50) then shifted (t0=0)."""
+
+    return title, subtitle, footnote
+
+
+def subtitle_y(fig_height):
+    if fig_height >=14: return 0.825
+    if fig_height >= 10: return 0.82
+    elif fig_height <= 5: return 0.79
+    elif fig_height <= 7: return 0.80
+    else: return 0.81
+
+
+def write_file_name(df):
+    A = '{}wk_MA'.format(df.name.split('-')[0])
+    B = '_{}'.format(df.name.split(' ')[5])
+    path = '../img/{}.{}'.format(A+B, file_format)
+    return path
