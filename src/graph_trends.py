@@ -1,4 +1,5 @@
 import datetime
+from datetime import datetime
 from math import trunc
 import numpy as np
 import pandas as pd
@@ -344,7 +345,7 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
                rank_on_sales=True, MA_param=5, rank_by=['rate'], N_top=3,
                fixed_order=True, fig_height=4,
                x_buff=0.1, x_in_bar=6, manual_data_label_format=None,
-               zero_gap=0.00, write_path=None, tuner=0.86):
+               zero_gap=0.00, write_path=None):
     """
     ARGUMENTS:
      -- product_IDs: (list of ints) products for ranking
@@ -378,7 +379,7 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
           * format in millions (bool)
           * round_to_int (bool)
           * precision in decimals (int)
-          example: (True, True, False, 3) formats -1234567 as -$1.234M
+          example: (True, True, False, 3) or (1,1,0,3) formats -1234567 as -$1.234 million
      -- zero_gap: (float, default=0.00) fraction of max abs x_value as width of
           cosmetic whitespace between zero-line and bars; recommended value
           if used: 0.01
@@ -742,7 +743,7 @@ Separate, Filled Trend Plots for Products on Same Y_Scale
 
 """
 
-def PlotFilledTrends(product_IDs, period_wks=10, end_date=None,
+def PlotFilledTrends(products, period_wks=10, end_date=None,
                      compute_on_sales=True, MA_param=None, shifted=False,
                      normed=False, baseline='t_zero', max_yticks=10, fig_height=7,
                      trunc_yticks=False, write_path=None):
@@ -776,7 +777,7 @@ def PlotFilledTrends(product_IDs, period_wks=10, end_date=None,
           and step below lowest data value and set that step as x-axis
      -- write_path: (str, default=None) write graph to 'path/file'
     """
-    df = CompTrendsDF(product_IDs, period_wks, end_date=end_date,
+    df = CompTrendsDF(products, period_wks, end_date=end_date,
                     compute_on_sales=compute_on_sales, MA_param=MA_param,
                      shifted=shifted, normed=normed, baseline=baseline)
 
@@ -877,3 +878,157 @@ def PlotFilledTrends(product_IDs, period_wks=10, end_date=None,
                    dpi=1000)
 
     plt.show()
+
+
+"""
+~~~~~~~~~~~~~~~~~~~~~~~
+Plot BestSellerData
+~~~~~~~~~~~~~~~~~~~~~~~~
+"""
+
+def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5):
+    """
+    Plot BestSellerData object -- rankings over consecutive periods.
+
+    ARGUMENTS:
+    df: BestSellerData[1] object df_B dataframe
+    labeler: BestSellerData[2] object, product label specifications
+    N_top: (int, default=None) number of top-performing products
+       to highlight
+    footnote_pad: (float) factor to set padding for footnote beneath
+       x-axis label
+    """
+
+    # Reverse sign of data to enable plotting with 1 at y_axis top
+    df_revd = df * -1
+    # Scale for setting labels and label offsets
+    d_range = pd.Timedelta(df.index[-1] - df.index[0]).days
+
+    # Format canvas
+    fig, ax = plt.subplots(figsize=(10, 0.85 * len(df.columns)))
+    hide_spines(ax)
+    title, footnote = df.name.split(' -- ')
+    ax.set_title(title + '\n', loc='center', fontsize=20, va='bottom',
+                 ha='center')
+    fn_ypos = -5 * len(df.columns)
+
+
+    # Format y_axis
+    n_products = range(1, len(df.columns)+1)
+    ytick_arr = np.array(n_products) * -1
+    ax.set_ylim(top=-0.5, bottom=-1*len(df.columns)-0.5)
+    ax.set_yticks(ytick_arr)
+    ax.set_yticklabels(n_products, fontsize=16)
+    ax.tick_params(axis='y', which='both', bottom='off', top='off',
+                        left='off', right='off', labelleft='on')
+    ax.set_ylabel('Rank', fontsize=16, labelpad=15)
+
+    # Format x_axis
+    ax.set_xticks(df.index)
+    ax.tick_params(axis='x', which='both', bottom='off', top='off',
+                   left='off', right='off', labelbottom='on',
+                   pad=5, labelsize=14, rotation=90)
+
+    x_labels = BestSeller_x_labels(df.index)
+    ax.set_xticklabels(x_labels)
+    ax.set_xlabel('Period Ending', fontsize=16, labelpad=15)
+
+
+    # Format colors and cosmetics, then plot data
+    palate = rescale_RGB(ColorBlind_10.colors)
+    colors_top = rescale_RGB(Greens_5.colors)
+    colors_top.reverse()
+    colors_bottom = ['0.1', '0.4', '0.7']
+    label_offset = d_range / 20. if d_range > 14 else 1
+    for i, col in enumerate(df.columns):
+        if N_top:
+            ci = i % min(len(colors_top), len(colors_bottom)) # revolving index for colors
+            transp = 1.0 if i < N_top else 0.5
+            lw = 5 if i < N_top else 1.5
+            msize = 16 if i < N_top else 8
+            if i == 0:
+                prod_color = 'g'
+            elif i > 0 and i < N_top:
+                prod_color = colors_top[ci]
+            else:
+                prod_color = colors_bottom[ci]
+        else:
+            ci = i % len(palate)
+            lw, transp, msize = 1, 1, 14
+            prod_color = palate[ci]
+
+        ax.plot(df_revd[col], linewidth=lw, color=prod_color, alpha=transp,
+                marker='o', markersize=msize, zorder=len(df)-i)
+
+        # Product labels
+        ax.text(df.index[-1] + pd.DateOffset(label_offset), -labeler[i][0],
+                labeler[i][1], color=prod_color, alpha=transp,
+                va='center', fontsize=16)
+
+    plt.annotate(footnote, (0.5, -footnote_pad/len(df.columns)),
+                 xycoords='axes fraction',
+                 fontsize=14, va='bottom', ha='center')
+
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=.3, top=.9)
+    plt.show()
+
+
+def BestSeller_x_labels(df_index):
+    """Construct x_axis labels for BestSellerData plots from source df
+    DateIndex, formatting with year(s) included in various cases"""
+
+    x_labels = []
+    dt_form_A, dt_form_B = '%b %d', '%b %d\n(%Y)'
+    years = [dt.year for dt in df_index]
+    yr_idx = 0
+    Jan_bool = True in [dt.month == 1 for dt in df_index]
+        # True if DateIndex contains January
+    multi_yr_bool = len(set(years)) > 1
+        # True if DateIndex bridges multiple years
+    multi_Jan_bool = [dt.month for dt in df_index].count(1) > 1
+        # True if DateIndex contains multiple January dates
+    counter = 0
+
+    for i, dt in enumerate(df_index):
+        # Add yr to first label if Jan not in DateIndex.
+        if Jan_bool == False and i == 0:
+            x_labels.append(datetime.strftime(dt, dt_form_B))
+            counter += 1
+
+        # Add yr to first label after a new year if not a January date
+        elif (Jan_bool == False
+              and dt.year != years[yr_idx] # detect new year
+              and counter < len(set(years))
+             ):
+            x_labels.append(datetime.strftime(dt, dt_form_B))
+            yr_idx += 1
+            counter += 1
+
+        # Add yr to each Jan label in an index that contains multiple
+        # January anniversaries
+        elif (dt.month == 1
+              and multi_yr_bool
+              and not multi_Jan_bool): # add year to each Jan x_label
+            # in an index that contains multiple January anniversaries
+            x_labels.append(datetime.strftime(dt, dt_form_B))
+
+        # Add yr to first Jan label in an index that bridges a year beginning
+        # contains multiple January dates in a single year
+        elif (dt.month == 1
+              and multi_yr_bool
+              and multi_Jan_bool
+              and counter == 0):
+            x_labels.append(datetime.strftime(dt, dt_form_B))
+            counter += 1
+
+        # Add yr to first Jan label in an index that does NOT bridge a year
+        # beginning but contains multiple Jan dates
+        elif dt.month == 1 and not multi_yr_bool and counter == 0:
+            x_labels.append(datetime.strftime(dt, dt_form_B))
+            counter += 1
+
+        else: # else, omit year from label
+            x_labels.append(datetime.strftime(dt, dt_form_A))
+
+    return x_labels

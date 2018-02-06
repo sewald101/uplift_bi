@@ -754,15 +754,9 @@ def BestSellerData(products, end_date=None, period_wks=10, MA_param=5,
             psdf = ProductStatsDF(products, period_wks=period_wks, end_date=end_d,
                     normed=True, compute_on_sales=compute_on_sales
                             )
-        # On first pass, populate name_dict
-        # if i == 0:
-        #     for row in psdf.index:
-        #         prod_id = psdf.iloc[row].product_id
-        #         prod_name = psdf.iloc[row].product_name
-        #         name_dict[prod_id] = prod_name
 
-        # Generate rankings and add to data dictionary (data_A) where keys are
-        # the end_dates of the comparison periods and values are the product IDs
+        # Generate rankings and add to data dictionary (data_A) where keys =
+        # the end_dates of the comparison periods; values = the product IDs
         # ordered by rank
         ranked = RankProducts(psdf)
         if MA_param:
@@ -828,17 +822,17 @@ def generate_dates(end_date, N_periods=10, freq='7D'):
 
 def parse_freq(freq):
     if freq == '7D' or freq == 'W':
-        return 'at Weekly Intervals'
+        return 'at weekly intervals'
     if 'W' in freq and len(freq) > 1:
         mult = list(freq)[0]
-        return 'at {}-Week Intervals'.format(mult)
+        return 'at {}-week intervals'.format(mult)
     if freq == 'M':
-        return 'at Monthly Intervals'
+        return 'at monthly intervals'
     if 'M' in freq and len(freq) > 1:
         mult = list(freq)[0]
-        return 'at {}-Month Intervals'.format(mult)
+        return 'at {}-month intervals'.format(mult)
     if freq == 'Y':
-        return 'Spaced Annually'
+        return 'spaced annually'
 
 def best_seller_title(MA_param, compute_on_sales, N_periods, period_wks,
                      rank_by, freq):
@@ -847,20 +841,22 @@ def best_seller_title(MA_param, compute_on_sales, N_periods, period_wks,
     if rank_by == 'rate':
         alpha = 'Relative Growth Rate'
     if rank_by == 'gain':
-        alpha = 'Uniform Weekly Gain/Loss in Sales over Period'
+        alpha = 'Uniform Weekly Gain/Loss in Sales'
     if rank_by == 'sales':
-        alpha = 'Avg Weekly Sales over Period'
-    A = 'Products Ranked by {}'.format(alpha)
+        alpha = 'Average Weekly Sales'
+    A = 'Successive Rankings on {}'.format(alpha)
 
-    beta = 'Sales ' if compute_on_sales else 'Units Sold '
-    if MA_param:
-        B = 'Computed on {}-Week Moving Avg Trends in Daily {}'.format(MA_param, beta)
-    else:
-        B = 'Computed on Trends in Daily {}'.format(beta)
-    C = 'over {} Successive {}-Week Periods '.format(N_periods,
+    B = 'Rankings over {} consecutive {}-week periods, '.format(N_periods,
                                                     period_wks)
-    gamma = parse_freq(freq)
-    D = 'Spaced {}'.format(gamma)
+    beta = parse_freq(freq)
+    C = 'spaced {}'.format(beta)
+
+    gamma = 'sales.' if compute_on_sales else 'units sold.'
+    if MA_param:
+        D = '\nComputed on {}-week moving-average trends in daily {}\n'\
+        .format(MA_param, gamma)
+    else:
+        D = '\nComputed on trends in daily {}'.format(gamma)
 
     return A + ' -- ' + B + C + D
 
