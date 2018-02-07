@@ -1,9 +1,12 @@
 """
 PLOTTING FUNCTIONS
 
--- PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
-                   max_yticks=10, trunc_yticks=False, legend=False,
-                   write_path=None)
+-- PlotCompTrends(df=None, products=None, period_wks=None, end_date=None,
+                MA_param=None, shifted=False, normed=False, baseline='t_zero',
+                compute_on_sales=True,
+                fig_height=12, palette=Greens_9, reverse_palette=True,
+                max_yticks=10, trunc_yticks=False, legend=False,
+                write_path=None)
 
 -- HbarRanked(products=None, period_wks=10, end_date=None,
                rank_on_sales=True, MA_param=5, rank_by=['rate'], N_top=3,
@@ -19,10 +22,6 @@ PLOTTING FUNCTIONS
 -- PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5, write_path=None)
 
 """
-
-
-
-
 
 
 import datetime
