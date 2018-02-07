@@ -1,3 +1,30 @@
+"""
+PLOTTING FUNCTIONS
+
+-- PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
+                   max_yticks=10, trunc_yticks=False, legend=False,
+                   write_path=None)
+
+-- HbarRanked(products=None, period_wks=10, end_date=None,
+               rank_on_sales=True, MA_param=5, rank_by=['rate'], N_top=3,
+               fixed_order=True, fig_height=4,
+               x_buff=0.1, x_in_bar=6, manual_data_label_format=None,
+               zero_gap=0.00, write_path=None)
+
+-- PlotFilledTrends(products, period_wks=10, end_date=None,
+                     compute_on_sales=True, MA_param=None, shifted=False,
+                     normed=False, baseline='t_zero', max_yticks=10, fig_height=7,
+                     trunc_yticks=False, write_path=None)
+
+-- PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5, write_path=None)
+
+"""
+
+
+
+
+
+
 import datetime
 from datetime import datetime
 from math import trunc
@@ -31,12 +58,36 @@ Line Plot of Products over Uniform Trend Parameters
 
 """
 
-def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
-                   max_yticks=10, trunc_yticks=False, legend=False,
-                   write_path=None):
+def PlotCompTrends(df=None, products=None, period_wks=None, end_date=None,
+                MA_param=None, shifted=False, normed=False, baseline='t_zero',
+                compute_on_sales=True,
+                fig_height=12, palette=Greens_9, reverse_palette=True,
+                max_yticks=10, trunc_yticks=False, legend=False,
+                write_path=None):
     """Plot time series in CompTrendsDF object
-    ARGUMENTS:
+    DATA ARGUMENTS:
      -- df: CompTrendsDF object (pandas DataFrame)
+
+    If df not provided:
+     -- products: (list of ints or strings) product names and/or IDs for
+          statistical comparison
+     -- period_wks: (int) sampling period in weeks
+     -- end_date: (date string: '07/15/2016', default=None) date string defining
+          end of sampling period. Default uses most recent date.
+     -- MA_param: (int) return dataframe of moving averages; int defines "boxcar"
+          window, in weeks, by which to compute moving average
+     -- shifted: (bool, default=False) shift trend data to t0 = 0
+     -- normed: (bool, default=False) rescale data to feature range (-1, 1)
+          then shift data such that t0 = 0.
+     -- baseline: (str, default='t_zero') baseline for shifing data; values:
+          * 't_zero' -- shift data by value at t0
+          * 'mean' -- shift data to mean = 0
+          * 'median' -- shift data to median = 0
+     -- compute_on_sales: (bool, default=True) computes on sales data; if False,
+          computes on units-sold data
+
+
+    GRAPHIC ARGUMENTS
      -- fig_height: (int, default=12) recommended values 7 <= x <= 14
      -- palette: palettable object (default=Greens_9; possible
          values: Tableau_20, Tableau_10, TableauLight_10,
@@ -49,6 +100,14 @@ def PlotCompTrends(df, fig_height=12, palette=Greens_9, reverse_palette=True,
      -- legend: (book, default=False) default places product labels at end of lines
      -- write_path: (str, default=None) write graph to jpeg or png at path provided
     """
+
+    if not df:
+        df = CompTrendsDF(products=products, period_wks=period_wks,
+                          end_date=end_date, MA_param=MA_param,
+                          shifted=shifted, normed=normed,
+                          baseline=baseline, compute_on_sales=compute_on_sales
+                          )
+
     plt.figure(figsize=(12,fig_height))
     ax = plt.axes([.1,.1,.8,.65])
     colors = rescale_RGB(palette.colors)
@@ -149,14 +208,14 @@ Horizontal Bar Chart of Products Ranked by Statistic(s)
 
 """
 
-def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
+def HbarRanked(products=None, period_wks=10, end_date=None,
                rank_on_sales=True, MA_param=5, rank_by=['rate'], N_top=3,
                fixed_order=True, fig_height=4,
                x_buff=0.1, x_in_bar=6, manual_data_label_format=None,
                zero_gap=0.00, write_path=None):
     """
     ARGUMENTS:
-     -- product_IDs: (list of ints) products for ranking
+     -- products: (list of ints or strings) list of products IDs and/or names for ranking
      -- period_wks: (int, default=10) sample period for time series in weeks
      -- end_date: (date string: '07/15/2016', default=None) date string defining
           end of sampling period. Default uses most recent date in dataset.
@@ -196,7 +255,7 @@ def HbarRanked(product_IDs=None, period_wks=10, end_date=None,
     """
 
     # Construct dataframe for graph(s)
-    df = HbarData(product_IDs, period_wks, end_date=end_date,
+    df = HbarData(products, period_wks, end_date=end_date,
                rank_on_sales=rank_on_sales, MA=MA_param,
                rank_by=rank_by, fixed_order=fixed_order)
 
@@ -563,12 +622,12 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
     to either shifted= or normed= arguments (NOT BOTH).
 
         ARGUMENTS:
-     -- product_IDs: (list of ints) products for ranking
+     -- products: (list of ints or strings) product IDs and/or names for ranking
      -- period_wks: (int, default=10) sample period for time series in weeks
      -- end_date: (date string: '07/15/2016', default=None) date string defining
           end of sampling period. Default uses most recent date in dataset.
-     -- rank_on_sales: (bool, default=True) ranks on sales data; if False,
-          ranks on units sold data
+     -- compute_on_sales: (bool, default=True) computes on sales data; if False,
+          computes on units-sold data
      -- MA_param: (int) return dataframe of moving averages; int defines "boxcar"
           window, in weeks, by which to compute moving average
      -- shifted: (bool, default=False) shift trend data to baseline
@@ -578,8 +637,6 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
           * 't_zero' -- shift data by value at t0
           * 'mean' -- shift data by the mean
           * 'median' -- shift data by the median
-     -- compute_on_sales: (bool, default=True) computes on sales data; if False,
-          computes on units-sold data
      -- fig_height: (int, default=7) factor for y-dimension of plt.figure
      -- trunc_yticks: (bool, default=False) If True, remove yticks between zero
           and step below lowest data value and set that step as x-axis
@@ -597,7 +654,7 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
     if MA_param:
         title_parsed = df.name.split(', D')
         fig_t, fig_subt = title_parsed[0], title_parsed[-1]
-        title = fig_t + '\nD' + fig_subt
+        title = fig_t# + '\nD' + fig_subt
     else:
         title = df.name
     plt.suptitle(title, x=0.5, y=0, fontsize=18,
@@ -849,6 +906,8 @@ def BestSeller_x_labels(df_index):
 
     return x_labels
 
+
+
 """
 ~~~~~~~~~~~~~~~~~~~~~~~
 Supporting, Multi-Use Functions
@@ -882,6 +941,7 @@ def select_step(val_range, low, high, max_N_ticks=10):
     low_digits = digits(low)
     high_digits = digits(high)
     if low >= 0:
+        # yaxis_range = high
         if range_digits == high_digits:
             yaxis_range = high
         if range_digits < high_digits:
@@ -982,56 +1042,6 @@ def parse_title(str):
         A = 'Trends in ' + str.split(' over ')[0]
     return (A, B)
 
-
-def title_subtitle_footnote(ranked_df):
-    """Take in RankProducts.results object; return title, subtitle and
-    footnote for graphs"""
-    name_str = ranked_df.name
-    stat_str = ranked_df.columns[2]
-    title, subtitle, footnote = None, None, None
-
-    # string elements
-    sales_bool = 'Sales' if 'sales' in name_str.lower() else 'Units Sold'
-    MA = stat_str.split('wk')[0]
-    period_str = name_str.split(' over ')[-1]
-    shifted_str = 'Data Shifted (t0 = 0)'
-    normed_str = 'Computed on Data Rescaled (-1, 1) then Shifted (T0 = 0)'
-
-    if 'cumulative' in stat_str.lower():
-        title = 'Cumulative Total ' + sales_bool + ' over ' + period_str
-
-    if 'ma log' in stat_str.lower():
-        title = 'Log-Areas under {}Wk-MA Trends in Daily {}'.format(
-            MA, sales_bool)
-        subtitle = period_str
-
-    if 'shifted log' in stat_str.lower():
-        title = 'Log-Areas under {}Wk-MA Gain/Loss in Daily {}'.format(
-            MA, sales_bool)
-        subtitle = period_str
-        footnote = 'NOTE: Computed on Data Shifted to t0=0.'
-
-    if 'gain' in stat_str.lower():
-        title = 'Weekly Gain/Loss* in {}Wk-MA Trends in Daily {}'.format(
-            MA, sales_bool)
-        subtitle = period_str
-        footnote = ('*NOTE: Computed by redistributing trend AUCs\
- under straight lines then taking the slopes.')
-
-    if 'normd auc' in stat_str.lower():
-        title = 'Areas under Normalized* {}Wk-MA Trends in Daily {}'\
-            .format(MA, sales_bool)
-        subtitle = period_str
-        footnote = '*NOTE: Computed on sales data rescaled (-50, 50) then shifted (t0=0).'
-
-    if 'normd growth' in stat_str.lower():
-        title = 'Normalized Growth Rates* of {}Wk-MA Trends in Daily {}'\
-            .format(MA, sales_bool)
-        subtitle = period_str
-        footnote = """*NOTE: Rates of daily growth normalized for sales volumes
-Data rescaled to (-50, 50) then shifted (t0=0)."""
-
-    return title, subtitle, footnote
 
 
 def subtitle_y(fig_height):
