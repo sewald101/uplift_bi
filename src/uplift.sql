@@ -162,6 +162,11 @@ COPY daily_sales
 FROM '/data/uplift/Data/inventoryretailsales.csv'
 DELIMITER ',' CSV HEADER;
 
+COPY locations
+TO '/data/uplift/Data/locations.csv'
+DELIMITER ',' CSV HEADER;
+
+
 /* CREATE TABLE FOR DAILY_SALES_DATA*/
 CREATE TABLE  daily_sales AS (
   SELECT drs.record

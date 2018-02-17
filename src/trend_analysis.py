@@ -248,7 +248,7 @@ class ProductTrendsDF(object):
         for column in self.trendsDF.columns[1:]:
             if 'NORMD' in column:
                 self.trend_stats[column + ' growth rate'] = \
-                    self.compute_aggr_slope(self.trendsDF[column])
+                    (7 * self.compute_aggr_slope(self.trendsDF[column]))
 
             if 'SHIFTED' in column:
                 self.trend_stats[column + ' avg weekly gain' + sales_or_units] = \
@@ -636,31 +636,25 @@ def HbarData(product_IDs, period_wks=10, end_date=None,
 
         else:
             rank_1 = RankProducts(prod_stats)
-            if MA:
-                rank_1.main(stat=rank_by[0])
-            else:
-                rank_1.main(smoothed=False, stat=rank_by[0])
+            rank_1.main(smoothed=MA, stat=rank_by[0])
             all_data = rank_1.ranked_df
             df_cols = all_data.columns
             cols = []
             for rank_stat in rank_by:
                 cols.append('product_name')
-                cols.append(df_cols[grab_column(stat=rank_stat, smoothed=MA)])
+                cols.append(grab_column(stat=rank_stat, smoothed=MA))
 
             data = all_data[cols]
 
 
     if len(rank_by) > 1 and not fixed_order:
             rank_1 = RankProducts(prod_stats)
-            rank_1.main(rank_by[0])
+            rank_1.main(smoothed=MA, stat=rank_by[0])
             data = rank_1.results
 
             for i, rank_stat in enumerate(rank_by[1:]):
                 rank_next = RankProducts(prod_stats)
-                if MA:
-                    rank_next.main(stat=rank_stat)
-                else:
-                    rank_next.main(smoothed=False, stat=rank_stat)
+                rank_next.main(smoothed=MA, stat=rank_stat)
                 next_ranked = rank_next.results
                 data['Ranking By {}'.format(rank_stat)] = next_ranked.iloc[:,0].values
                 data[next_ranked.columns[-1]] = next_ranked.iloc[:,-1].values
@@ -676,15 +670,15 @@ def HbarData(product_IDs, period_wks=10, end_date=None,
 def grab_column(stat, smoothed):
     """Return index for data column in HbarData fixed_order bar graph"""
     if stat == 'sales':
-        return 2
+        return 'avg weekly sales'
     if not smoothed and stat == 'gain':
-        return 3
+        return 'SHIFTED to t0=0 avg weekly gain ($)'
     if not smoothed and stat == 'rate':
-        return 4
+        return 'NORMD growth rate'
     if smoothed and stat == 'gain':
-        return 5
+        return '{}wk MA SHIFTED to t0=0 avg weekly gain ($)'.format(smoothed)
     if smoothed and stat == 'rate':
-        return 6
+        return '{}wk MA NORMD growth rate'.format(smoothed)
 
 
 

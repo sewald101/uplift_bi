@@ -57,8 +57,8 @@ Line Plot of Products over Uniform Trend Parameters
 
 """
 
-def PlotCompTrends(df=None, products=None, period_wks=None, end_date=None,
-                MA_param=None, shifted=False, normed=False, baseline='t_zero',
+def PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
+                MA_param=5, shifted=False, normed=False, baseline='t_zero',
                 compute_on_sales=True,
                 fig_height=12, palette=Greens_9, reverse_palette=True,
                 max_yticks=10, trunc_yticks=False, legend=False,
@@ -100,7 +100,7 @@ def PlotCompTrends(df=None, products=None, period_wks=None, end_date=None,
      -- write_path: (str, default=None) write graph to jpeg or png at path provided
     """
 
-    if not df:
+    if df is None:
         df = CompTrendsDF(products=products, period_wks=period_wks,
                           end_date=end_date, MA_param=MA_param,
                           shifted=shifted, normed=normed,
@@ -396,35 +396,35 @@ def default_data_format(x_arr, curr_bool, rank_by):
             for i, x in enumerate(x_arr):
                 if i == len(x_arr)-1: # full format for first data point
                     if rank_by == 'rate':
-                        formatted.append(format_currency(x, millions=True) + '/day')
+                        formatted.append(format_currency(x, millions=True) + '/wk')
                     elif rank_by == 'gain':
-                        formatted.append(format_currency(x, millions=True) + '/week')
+                        formatted.append(format_currency(x, millions=True) + '/wk')
                     else:
-                        formatted.append(format_currency(x, millions=True))
+                        formatted.append(format_currency(x, millions=True) + '/wk')
                 else:
-                    formatted.append(format_units(x * 1e-6))
+                    formatted.append(format_currency(x, millions=True))
         elif max_x > 199:
             for i, x in enumerate(x_arr):
                 if i == len(x_arr)-1:
                     if rank_by == 'rate':
-                        formatted.append(format_currency(x, dollars=True) + '/day')
+                        formatted.append(format_currency(x, dollars=True) + '/wk')
                     elif rank_by == 'gain':
-                        formatted.append(format_currency(x, dollars=True) + '/week')
+                        formatted.append(format_currency(x, dollars=True) + '/wk')
                     else:
-                        formatted.append(format_currency(x, dollars=True))
+                        formatted.append(format_currency(x, dollars=True) + '/wk')
                 else:
-                    formatted.append(format_units(x, round_to_int=True))
+                    formatted.append(format_currency(x, dollars=True))
         else:
             for i, x in enumerate(x_arr):
                 if i == len(x_arr)-1:
                     if rank_by == 'rate':
-                        formatted.append(format_currency(x, decimals=2) + '/day')
+                        formatted.append(format_currency(x, decimals=2) + '/wk')
                     elif rank_by == 'gain':
-                        formatted.append(format_currency(x, decimals=2) + '/week')
+                        formatted.append(format_currency(x, decimals=2) + '/wk')
                     else:
-                        formatted.append(format_currency(x, decimals=2))
+                        formatted.append(format_currency(x, decimals=2) + '/wk')
                 else:
-                        formatted.append(format_units(x, decimals=2))
+                        formatted.append(format_currency(x, decimals=2))
 
     else: # if NOT currency...
         if max_x > 999999:
@@ -432,14 +432,16 @@ def default_data_format(x_arr, curr_bool, rank_by):
                 if i == len(x_arr)-1: # full format for first data point
                     if rank_by == 'rate':
                         formatted.append(
-                        format_units(x, millions=True) + ' units/day'
+                        format_units(x, millions=True) + ' units/wk'
                         )
                     elif rank_by == 'gain':
                         formatted.append(
-                        format_units(x, millions=True) + ' units/week'
+                        format_units(x, millions=True) + ' units/wk'
                         )
                     else:
-                        formatted.append(format_units(x, millions=True))
+                        formatted.append(
+                        format_units(x, millions=True) + ' units/wk'
+                        )
                 else:
                     formatted.append(format_units(x * 1e-6))
 
@@ -448,15 +450,15 @@ def default_data_format(x_arr, curr_bool, rank_by):
                 if i == len(x_arr)-1:
                     if rank_by == 'rate':
                         formatted.append(
-                        format_currency(x, round_to_int=True) + ' units/day'
+                        format_units(x, round_to_int=True) + ' units/wk'
                         )
                     elif rank_by == 'gain':
                         formatted.append(
-                        format_currency(x, round_to_int=True) + ' units/week'
+                        format_units(x, round_to_int=True) + ' units/wk'
                         )
                     else:
                         formatted.append(
-                        format_units(x, round_to_int=True) + 'units'
+                        format_units(x, round_to_int=True) + ' units/wk'
                         )
                 else:
                     formatted.append(format_units(x, round_to_int=True))
@@ -466,14 +468,14 @@ def default_data_format(x_arr, curr_bool, rank_by):
                 if i == len(x_arr)-1:
                     if rank_by == 'rate':
                         formatted.append(
-                        format_units(x, decimals=2) + ' units/day'
+                        format_units(x, decimals=2) + ' units/wk'
                         )
                     elif rank_by == 'gain':
                         formatted.append(
-                        format_units(x, decimals=2) + ' units/week'
+                        format_units(x, decimals=2) + ' units/wk'
                         )
                     else:
-                        formatted.append(format_units(x) + 'units')
+                        formatted.append(format_units(x) + ' units/wk')
                 else:
                     formatted.append(format_units(x))
 
@@ -539,23 +541,23 @@ def axtitle_footnote(rank_by, curr_bool):
     sym = '$' if curr_bool else ''
     if rank_by == 'sales':
         if curr_bool:
-            title = u'Avg Weekly Sales over Period\n'
+            title = u'Avg Weekly Sales\n'
             footnote = None
         else:
-            title = u'Avg Weekly Units Sold over Period\n'
+            title = u'Avg Weekly Units Sold\n'
             footnote = None
     if rank_by == 'rate':
-        title = (u'Relative Growth Rates$^*$ over Period\n')
+        title = (u'Relative Growth Rate$^\u2020$\n')
         footnote = (
-        u'* Daily sales data for each strain rescaled to (-{}50, {}50)'
+        u'\u2020 Daily sales data for each strain rescaled to (-{}50, {}50)'
         u' then shifted to t0 = {}0.00\n'
         u'   Rate then calculated from the slope of a straight '
         u'line containing area under trend curve.'.format(sym, sym, sym)
         )
     if rank_by == 'gain':
-        title = u'Uniform Weekly Growth Rates$^\u2020$ over Period\n'
+        title = u'Avg Weekly Gain/Loss$^*$\n'
         footnote = (
-        u'\u2020 Slope of straight line containing '
+        u'* Slope of straight line containing '
         u'area under trend curve\n   Data shifted to t0 = {}0.00'.format(sym)
         )
 
