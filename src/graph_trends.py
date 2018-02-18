@@ -209,9 +209,9 @@ Horizontal Bar Chart of Products Ranked by Statistic(s)
 
 def HbarRanked(products=None, period_wks=10, end_date=None,
                rank_on_sales=True, MA_param=5, rank_by=['rate'], N_top=3,
-               fixed_order=True, fig_height=4,
+               fixed_order=True, fig_height=4, fig_margins=(0.2, 0.8, None),
                x_buff=0.1, x_in_bar=6, manual_data_label_format=None,
-               zero_gap=0.00, write_path=None):
+               zero_gap=0.00, txt=None, write_path=None):
     """
     ARGUMENTS:
      -- products: (list of ints or strings) list of products IDs and/or names for ranking
@@ -235,10 +235,14 @@ def HbarRanked(products=None, period_wks=10, end_date=None,
           graph and maintain that rank-order in secondary graphs; if False,
           rank products in each graph
      -- fig_height: (int, default=4) y-dimension of plt.figure
+     -- fig_margins: (tuple of floats, default=(0.2, 0.8, None)) variables to adjust figure margins
+          via kwargs in plt.subplots_adjust, tuple: (bottom, top, wspace)
+          See: https://matplotlib.org/devdocs/api/_as_gen/matplotlib.pyplot.subplots_adjust.html
      -- x_buff: (float, default=0.005) fraction of maximum absolute x-value
           by which to set left and right margins of plot around bars
-     -- x_in_bar: (int, default=6) divisor of maximum abs x-value used to set
-          threshold for whether value labels appear outside of bars
+     -- x_in_bar: (int or float, default=6) divisor of maximum abs x-value used to set
+          threshold for whether each value label appears inside or outside of its bar.
+          Lower number means label more likely to appear outside of bar.
      -- manual_data_label_format: (tuple, default=None) override default x_label
           formatting with the following ordered values in a tuple:
           * format as currency (bool)
@@ -246,6 +250,10 @@ def HbarRanked(products=None, period_wks=10, end_date=None,
           * round_to_int (bool)
           * precision in decimals (int)
           example: (True, True, False, 3) or (1,1,0,3) formats -1234567 as -$1.234 million
+     -- txt: (list of tuples, default=None): manual specification of titles, subtitles
+          and footnotes, each specified per the matplotlib.pyplot.text args and kwargs in tuple:
+          (text(str), y-pos(float), fontsize(int), fontweight(str), color(str))
+          See: https://matplotlib.org/api/_as_gen/matplotlib.pyplot.text.html
      -- zero_gap: (float, default=0.00) fraction of max abs x_value as width of
           cosmetic whitespace between zero-line and bars; recommended value
           if used: 0.01
@@ -265,43 +273,33 @@ def HbarRanked(products=None, period_wks=10, end_date=None,
     fig, axs = plt.subplots(1, len(rank_by), squeeze=False, sharey=share_bool,
                             figsize=(8*len(rank_by), fig_height),
                             )
-    if len(rank_by) > 1:
-        plt.suptitle(df.name.split(' -- ')[0], x=0.5, y=0, fontsize=20, fontweight='normal',
-                 va='top', ha='center')
-    else:
-        title_parsed = df.name.split(' -- ')
-        fig_title = title_parsed[0] + '\n' + title_parsed[1]
-        plt.suptitle(fig_title, x=0.5, y=0, fontsize=20, fontweight='normal',
-                     va='top', ha='center')
 
     y_pos = range(len(df)) # positions for horizontal bars and product labels
 
     for i, ax in enumerate(axs.flatten()):
 
-        # format plot title
-#         stat_str = df.columns[(i*2)+1]
-        axtitle, footnote = axtitle_footnote(rank_by[i], rank_on_sales)
-        ax.set_title(axtitle, loc='left', fontsize=16, fontweight='bold',
-                    va='bottom', ha='left')
-
-        if footnote:
-            ax.annotate(footnote, xy=(0,-0.2), xycoords='axes fraction', ha='left',
-                       fontsize=10)
         hide_spines(ax)
 
         # format plot canvas(es)
         ax.axvline(0, color='0.2', linewidth=1)
-        if not fixed_order and i != len(rank_by)-1:
-            ax.spines['right'].set_visible('True')
         ax.tick_params(axis='y', which='both', bottom='off', top='off',
                 left='off', right='off', labelleft='on',
                 labelright='off', labelbottom='off')
         ax.tick_params(axis='x', which='both', bottom='off', top='off',
                 left='off', right='off', labelleft='off',
                 labelright='off', labelbottom='off')
+
+        # gridlines
         ax.axhline(y_pos[-1] + 0.5, ls='--', lw=0.5, color='0.8')
         for y in y_pos:
             ax.axhline(y - 0.5, ls='--', lw=0.5, color='0.8')
+
+        # separator for multiple ranked graphs
+        if not fixed_order and i != len(rank_by)-1:
+            ax.spines['right'].set_visible('True')
+            ax.spines['right'].set_color('0.8')
+            ax.spines['right'].set_lw(0.5)
+            ax.spines['right'].set_ls('-')
 
         # format y axis
         y_labels = df.iloc[:,(i*2)]
@@ -346,8 +344,44 @@ def HbarRanked(products=None, period_wks=10, end_date=None,
             ax.text(tup[0], y_pos[k], x_labels[k],
                    ha=tup[1], va='center', color=tup[2], fontsize=12)
 
+        # format plot title and footnote
+        if not txt:
+            axtitle, footnote = axtitle_footnote(rank_by[i], rank_on_sales)
+            if len(rank_by) > 1:
+                ax.set_title(axtitle, loc='center', fontsize=16, fontweight='normal',
+                            va='bottom', ha='center')
+            else:
+                title = u"Products Ranked by {}".format(axtitle)
+                plt.suptitle(title, x=0, y=0.95, fontsize=20, fontweight='bold', ha='left',
+                            va='top', color='k')
+
+            if footnote:
+                ax.annotate(footnote, xy=(0,-0.2), xycoords='axes fraction', ha='left',
+                           fontsize=10, color='0.5')
+
+    # Figure titles, subtitles and footnotes
+    if txt: # manual input via txt kwarg
+        for tup in txt:
+            fig.text(x=0, y=tup[1], s=tup[0], fontsize=tup[2], fontweight=tup[3], color=tup[4], va='bottom', ha='left')
+
+    else:
+        dfname_parsed = df.name.split(' -- ')
+        A = u'Product Performance over '
+        B = dfname_parsed[0].split(' over ')[1]
+        C = u"Computed on {}".format(dfname_parsed[1]) if MA_param else ''
+
+        if len(rank_by) > 1:
+            plt.suptitle(A + B + '\n', x=0.0, y=0.96, fontsize=20, fontweight='bold',
+                     va='top', ha='left', color='k')
+            fig.text(x=0.0, y=0.9, s=C, fontsize=16, fontweight='normal',
+             va='top', ha='left', color='0.4')
+
+        else:
+            fig.text(x=0.0, y=0.88, s=C, fontsize=16, fontweight='normal',
+                         va='top', ha='left', color='0.4')
+
     plt.tight_layout()
-    plt.subplots_adjust(bottom=.2, top=.9)
+    plt.subplots_adjust(bottom=fig_margins[0], top=fig_margins[1], wspace=fig_margins[2])
 
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
