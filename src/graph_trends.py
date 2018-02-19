@@ -1,12 +1,12 @@
 """
 PLOTTING FUNCTIONS
 
--- PlotCompTrends(df=None, products=None, period_wks=None, end_date=None,
-                MA_param=None, shifted=False, normed=False, baseline='t_zero',
+-- PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
+                MA_param=5, shifted=False, normed=False, baseline='t_zero',
                 compute_on_sales=True,
-                fig_height=12, palette=Greens_9, reverse_palette=True,
-                max_yticks=10, trunc_yticks=False, legend=False,
-                write_path=None)
+                fig_height=12, palette=Greens_9, fig_margins=(0.1, 0.75),
+                reverse_palette=True, max_yticks=10, trunc_yticks=False,
+                legend=False, txt=None, write_path=None):
 
 -- HbarRanked(products=None, period_wks=10, end_date=None,
                rank_on_sales=True, MA_param=5, rank_by=['rate'], N_top=3,
@@ -60,9 +60,9 @@ Line Plot of Products over Uniform Trend Parameters
 def PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
                 MA_param=5, shifted=False, normed=False, baseline='t_zero',
                 compute_on_sales=True,
-                fig_height=12, palette=Greens_9, reverse_palette=True,
-                max_yticks=10, trunc_yticks=False, legend=False,
-                write_path=None):
+                fig_height=12, palette=Greens_9, fig_margins=(0.1, 0.75),
+                reverse_palette=True, max_yticks=10, trunc_yticks=False,
+                legend=False, txt=None, write_path=None):
     """Plot time series in CompTrendsDF object
     DATA ARGUMENTS:
      -- df: CompTrendsDF object (pandas DataFrame)
@@ -88,6 +88,10 @@ def PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
 
     GRAPHIC ARGUMENTS
      -- fig_height: (int, default=12) recommended values 7 <= x <= 14
+     -- fig_margins: (tuple of floats, default=(0.2, 0.75)) variables to adjust
+          figure footer and header via kwargs in plt.subplots_adjust,
+          tuple: (bottom=, top=)
+          See: https://matplotlib.org/devdocs/api/_as_gen/matplotlib.pyplot.subplots_adjust.html
      -- palette: palettable object (default=Greens_9; possible
          values: Tableau_20, Tableau_10, TableauLight_10,
          TableauMedium_10, PurpleGray_6, PurpleGray_12, ColorBlind_10, Greens_5,
@@ -97,6 +101,10 @@ def PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
      -- trunc_yticks: (bool, default=False) If True, remove yticks between zero
           and step below lowest data value and set that step as x-axis
      -- legend: (book, default=False) default places product labels at end of lines
+     -- txt: (list of tuples, default=None): manual specification of titles, subtitles
+          and footnotes, each specified per the matplotlib.pyplot.text args and kwargs in tuple:
+          (text(str), y-pos(float), fontsize(int), fontweight(str), color(str))
+          See: https://matplotlib.org/api/_as_gen/matplotlib.pyplot.text.html
      -- write_path: (str, default=None) write graph to jpeg or png at path provided
     """
 
@@ -107,8 +115,7 @@ def PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
                           baseline=baseline, compute_on_sales=compute_on_sales
                           )
 
-    plt.figure(figsize=(12,fig_height))
-    ax = plt.axes([.1,.1,.8,.65])
+    fig, ax = plt.subplots(figsize=(12,fig_height))
     colors = rescale_RGB(palette.colors)
     if reverse_palette:
         colors.reverse()
@@ -117,18 +124,21 @@ def PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
     # ax.spines['bottom'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
+    ax.spines['bottom'].set_color('0.5')
+    ax.spines['bottom'].set_lw(2.0)
 
     # set y_axis limits and format tick labels and grid lines
     if 'scale' in df.name.lower(): # i.e., if data rescaled / normed
         plt.ylim(-110, 110)
         tick_arr = [-100, 0, 100]
         plt.tick_params(axis='y', which='both', bottom='off', top='off',
-                        left='off', right='off', labelleft='on')
+                        left='off', right='off', labelleft='on',
+                        labelcolor='0.5')
         if 'unit' in df.name.lower():
             plt.yticks(tick_arr, [y for y in tick_arr], fontsize=14)
         else:
             plt.yticks(tick_arr, [y_to_str(y) for y in tick_arr], fontsize=14)
-        ax.yaxis.grid(True, ls='--', lw=0.75, color='black', alpha=0.5)
+        ax.yaxis.grid(True, ls='--', lw=0.5, color='0.9')
 
     else:
         val_range, data_min, data_max = range_vals(df)
@@ -140,12 +150,13 @@ def PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
         # space and format y_ticks
         tick_arr = space_yticks(y_low, y_high, step, trunc_yticks)
         plt.tick_params(axis='y', which='both', bottom='off', top='off',
-                        left='off', right='off', labelleft='on')
+                        left='off', right='off', labelleft='on',
+                        labelcolor='0.3')
         if 'unit' in df.name.lower():
             plt.yticks(tick_arr, [y for y in tick_arr], fontsize=14)
         else:
             plt.yticks(tick_arr, [y_to_str(y) for y in tick_arr], fontsize=14)
-        ax.yaxis.grid(True, ls='--', lw=0.75, color='black', alpha=0.5)
+        ax.yaxis.grid(True, ls='--', lw=0.5, color='0.8')
 
     # set x_axis limits; add one day to upper limit for last minor tick mark
     idx = df.index
@@ -154,13 +165,14 @@ def PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
     # Format x_major ticks with month name at each beginning of month
     plt.tick_params(axis='x', which='major', bottom='off', top='off',
                     left='off', right='off', labelbottom='on', pad=10,
-                    labelsize=14, labelrotation=45)
+                    labelsize=14, labelrotation=45, labelcolor='0.4')
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
 
     # place a minor tick on x-axis at each week
     plt.tick_params(axis='x', which='minor', direction='out', length=10,
-                    width=1.0, labelbottom='off', left='off', right='off')
+                    width=2.0, labelbottom='off', left='off', right='off',
+                    color='0.5')
     ax.xaxis.set_minor_locator(plt.MultipleLocator(7)) # 7 days
 
     # plot data
@@ -181,21 +193,30 @@ def PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
         num_products = len(list(df.columns))
         legend_cols = num_products if num_products <= 5 else num_products / 2
         ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.13),
-          frameon=True, ncol=legend_cols, fontsize=12)
+          frameon=False, ncol=legend_cols, fontsize=12)
 
-    # Title plot
+    # Title, subtitle and notes
     title_x = 0.50 if legend else 0.54
-    if 'over' in df.name: # conditional on smoothed data
-        sup, sub = parse_title(df.name)
-        plt.figtext(title_x, .85, sup, fontsize=20, ha='center')
-        plt.figtext(title_x, subtitle_y(fig_height), sub, fontsize=16, ha='center')
+    if txt: # manual title and note input
+        for tup in txt:
+            fig.text(x=0, y=tup[1], s=tup[0], fontsize=tup[2], fontweight=tup[3],
+            color=tup[4], va='bottom', ha='left')
 
-    else:
-        plt.title(title_plot(df.name), x=title_x, fontsize=20)
-        rcParams['axes.titlepad'] = 50
+    else: # default automated titling
+        if 'over' in df.name: # conditional on smoothed trend data
+            sup, sub = parse_title(df.name)
+            plt.figtext(title_x, .85, sup, fontsize=20, ha='center')
+            plt.figtext(title_x, subtitle_y(fig_height), sub, fontsize=16, ha='center')
+
+        else:
+            plt.title(title_plot(df.name), x=title_x, fontsize=20)
+            rcParams['axes.titlepad'] = 50
 
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25)
+
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=fig_margins[0], top=fig_margins[1])
 
     plt.show()
 
@@ -362,9 +383,10 @@ def HbarRanked(products=None, period_wks=10, end_date=None,
     # Figure titles, subtitles and footnotes
     if txt: # manual input via txt kwarg
         for tup in txt:
-            fig.text(x=0, y=tup[1], s=tup[0], fontsize=tup[2], fontweight=tup[3], color=tup[4], va='bottom', ha='left')
+            fig.text(x=0, y=tup[1], s=tup[0], fontsize=tup[2], fontweight=tup[3],
+            color=tup[4], va='bottom', ha='left')
 
-    else:
+    else: # automated titles and notes
         dfname_parsed = df.name.split(' -- ')
         A = u'Product Performance over '
         B = dfname_parsed[0].split(' over ')[1]
@@ -374,14 +396,15 @@ def HbarRanked(products=None, period_wks=10, end_date=None,
             plt.suptitle(A + B + '\n', x=0.0, y=0.96, fontsize=20, fontweight='bold',
                      va='top', ha='left', color='k')
             fig.text(x=0.0, y=0.9, s=C, fontsize=16, fontweight='normal',
-             va='top', ha='left', color='0.4')
+                     va='top', ha='left', color='0.4')
 
         else:
             fig.text(x=0.0, y=0.88, s=C, fontsize=16, fontweight='normal',
-                         va='top', ha='left', color='0.4')
+                     va='top', ha='left', color='0.4')
 
     plt.tight_layout()
-    plt.subplots_adjust(bottom=fig_margins[0], top=fig_margins[1], wspace=fig_margins[2])
+    plt.subplots_adjust(bottom=fig_margins[0], top=fig_margins[1],
+                        wspace=fig_margins[2])
 
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
@@ -648,7 +671,8 @@ Separate, Filled Trend Plots for Products on Same Y_Scale
 def PlotFilledTrends(products, period_wks=10, end_date=None,
                      compute_on_sales=True, MA_param=None, shifted=False,
                      normed=False, baseline='t_zero', max_yticks=10, fig_height=7,
-                     trunc_yticks=False, write_path=None):
+                     fig_margins=(None, 0.85, 0.60), trunc_yticks=False,
+                     txt=None, write_path=None):
     """Separately plot sales trends for products on identical y-scales and
     trend parameters.
 
@@ -673,8 +697,15 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
           * 'mean' -- shift data by the mean
           * 'median' -- shift data by the median
      -- fig_height: (int, default=7) factor for y-dimension of plt.figure
+     -- fig_margins: (tuple of floats, default=(None, 0.85, 0.6)) variables to adjust figure margins
+          via kwargs in plt.subplots_adjust, tuple: (bottom=, top=, hspace=)
+          See: https://matplotlib.org/devdocs/api/_as_gen/matplotlib.pyplot.subplots_adjust.html
      -- trunc_yticks: (bool, default=False) If True, remove yticks between zero
           and step below lowest data value and set that step as x-axis
+     -- txt: (list of tuples, default=None): manual specification of titles, subtitles
+          and footnotes, each specified per the matplotlib.pyplot.text args and kwargs in tuple:
+          (text(str), y-pos(float), fontsize(int), fontweight(str), color(str))
+          See: https://matplotlib.org/api/_as_gen/matplotlib.pyplot.text.html
      -- write_path: (str, default=None) write graph to 'path/file'
     """
     df = CompTrendsDF(products, period_wks, end_date=end_date,
@@ -686,19 +717,26 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
                             figsize=(10, fig_height*len(products))
                            )
 
-    if MA_param:
-        title_parsed = df.name.split(', D')
-        fig_t, fig_subt = title_parsed[0], title_parsed[-1]
-        title = fig_t# + '\nD' + fig_subt
+    # Title for figure
+    if txt:
+        for tup in txt:
+            fig.text(x=0, y=tup[1], s=tup[0], fontsize=tup[2], fontweight=tup[3],
+            color=tup[4], va='bottom', ha='left')
     else:
-        title = df.name
-    plt.suptitle(title, x=0.5, y=0, fontsize=18,
-                 fontweight='normal', va='bottom', ha='center')
+        if MA_param:
+            title_parsed = df.name.split(', D')
+            fig_t, fig_subt = title_parsed[0], title_parsed[-1]
+            title = fig_t
+        else:
+            title = df.name
+        plt.suptitle(title, x=0.5, y=0, fontsize=18,
+                     fontweight='normal', va='bottom', ha='center')
 
     axes = axs.flatten()
     for i, ax in enumerate(axes):
         hide_spines(ax)
         ax.spines['bottom'].set_visible(True)
+        ax.spines['bottom'].set_color('0.6')
         series = df[products[i]]
         y_pos, y_neg = series.copy(), series.copy()
         ax.set_title('{}'.format(products[i]), loc='center', fontsize=16,
@@ -720,13 +758,14 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
         # Format x_major ticks with month name at each beginning of month
         ax.tick_params(axis='x', which='major', bottom='off', top='off',
                         left='off', right='off', labelbottom='on', pad=10,
-                        labelsize=14, labelrotation=45)
+                        labelsize=14, labelrotation=45, labelcolor='0.6')
         ax.xaxis.set_major_locator(mdates.MonthLocator())
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
 
         # place a minor tick on x-axis at each week
         ax.tick_params(axis='x', which='minor', direction='out', length=10,
-                        width=1.0, labelbottom='off', left='off', right='off')
+                        width=1.0, color='0.6',
+                        labelbottom='off', left='off', right='off')
         ax.xaxis.set_minor_locator(plt.MultipleLocator(7)) # 7 days
 
         # set y_axis limits and format tick labels and grid lines
@@ -735,7 +774,7 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
             tick_arr = [-100, 0, 100]
             ax.tick_params(axis='y', which='both', bottom='off', top='off',
                             left='off', right='off', labelleft='on',
-                          labelsize=14)
+                          labelsize=14, labelcolor='0.4')
             if 'unit' in df.name.lower():
                 ax.set_yticks(tick_arr)
                 ax.set_yticklabels([y for y in tick_arr])
@@ -758,7 +797,7 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
                                     trunc_yticks=trunc_yticks)
             ax.tick_params(axis='y', which='both', bottom='off', top='off',
                             left='off', right='off', labelleft='on',
-                          labelsize=14)
+                          labelsize=14, labelcolor='0.4')
             if 'unit' in df.name.lower():
                 ax.set_yticks(tick_arr)
                 ax.set_yticklabels([y for y in tick_arr])
@@ -770,8 +809,10 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
 
 
     plt.tight_layout()
-    footer = {1:0.30, 2:0.15, 3:0.10, 4:0.075, 5:0.06}
-    fig.subplots_adjust(bottom=footer[len(products)], top=.85, hspace=0.6)
+    ftr_dict = {1:0.30, 2:0.15, 3:0.10, 4:0.075, 5:0.06}
+    footer = ftr_dict[len(products)] if not fig_margins[0] else fig_margins[0]
+    fig.subplots_adjust(bottom=footer, top=fig_margins[1],
+                        hspace=fig_margins[2])
 
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
@@ -787,18 +828,26 @@ Plot BestSellerData
 """
 
 def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5,
-                    write_path=None):
+                    fig_margins=(0.3, 0.9), txt=None, write_path=None):
     """
     Plot BestSellerData object -- rankings over consecutive periods.
 
     ARGUMENTS:
-    df: BestSellerData[1] object df_B dataframe
-    labeler: BestSellerData[2] object, product label specifications
-    N_top: (int, default=None) number of top-performing products
-       to highlight
-    footnote_pad: (float) factor to set padding for footnote beneath
+    -- df: BestSellerData[1] object df_B dataframe
+    -- labeler: BestSellerData[2] object, product label specifications
+    -- N_top: (int, default=None) number of top-performing products
+           to highlight
+    -- footnote_pad: (float) factor to set padding for footnote beneath
        x-axis label
-    write_path: (str, default=None) write graph to 'path/file'
+    -- fig_margins: (tuple of floats, default=(0.2, 0.75)) variables to adjust
+          figure footer and header via kwargs in plt.subplots_adjust,
+          tuple: (bottom=, top=)
+          See: https://matplotlib.org/devdocs/api/_as_gen/matplotlib.pyplot.subplots_adjust.html
+    -- txt: (list of tuples, default=None): manual specification of titles, subtitles
+          and footnotes, each specified per the matplotlib.pyplot.text args and kwargs in tuple:
+          (text(str), y-pos(float), fontsize(int), fontweight(str), color(str))
+          See: https://matplotlib.org/api/_as_gen/matplotlib.pyplot.text.html
+    -- write_path: (str, default=None) write graph to 'path/file'
 
     """
 
@@ -807,13 +856,23 @@ def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5,
     # Scale for setting labels and label offsets
     d_range = pd.Timedelta(df.index[-1] - df.index[0]).days
 
-    # Format canvas
+    # Format canvas, title and footnote
     fig, ax = plt.subplots(figsize=(10, 0.85 * len(df.columns)))
     hide_spines(ax)
-    title, footnote = df.name.split(' -- ')
-    ax.set_title(title + '\n', loc='center', fontsize=20, va='bottom',
-                 ha='center')
-    fn_ypos = -5 * len(df.columns)
+
+    if txt: # manual input of title and footnote
+        for tup in txt:
+            fig.text(x=0, y=tup[1], s=tup[0], fontsize=tup[2], fontweight=tup[3],
+            color=tup[4], va='bottom', ha='left')
+
+    else: # default automated title and footnote
+        title, footnote = df.name.split(' -- ')
+        ax.set_title(title + '\n', loc='center', fontsize=20, va='bottom',
+                     ha='center')
+        # fn_ypos = -5 * len(df.columns)
+        plt.annotate(footnote, (0.5, -footnote_pad/len(df.columns)),
+                     xycoords='axes fraction', fontsize=14, va='bottom',
+                     ha='center', color='0.5')
 
 
     # Format y_axis
@@ -821,10 +880,10 @@ def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5,
     ytick_arr = np.array(n_products) * -1
     ax.set_ylim(top=-0.5, bottom=-1*len(df.columns)-0.5)
     ax.set_yticks(ytick_arr)
-    ax.set_yticklabels(n_products, fontsize=16)
+    ax.set_yticklabels(n_products, fontsize=16, color='0.5')
     ax.tick_params(axis='y', which='both', bottom='off', top='off',
-                        left='off', right='off', labelleft='on')
-    ax.set_ylabel('Rank', fontsize=16, labelpad=15)
+                        left='off', right='off', labelleft='off')
+    ax.set_ylabel('Rank', fontsize=16, labelpad=10)
 
     # Format x_axis
     ax.set_xticks(df.index)
@@ -833,8 +892,8 @@ def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5,
                    pad=5, labelsize=14)
 
     x_labels = BestSeller_x_labels(df.index)
-    ax.set_xticklabels(x_labels, rotation=90)
-    ax.set_xlabel('Period Ending', fontsize=16, labelpad=15)
+    ax.set_xticklabels(x_labels, rotation=90, color='0.5')
+    ax.set_xlabel('Periods Ending', fontsize=16, labelpad=15)
 
 
     # Format colors and cosmetics, then plot data
@@ -845,10 +904,12 @@ def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5,
     label_offset = d_range / 20. if d_range > 14 else 1
     for i, col in enumerate(df.columns):
         if N_top:
-            ci = i % min(len(colors_top), len(colors_bottom)) # revolving index for colors
+            ci = i % min(len(colors_top), len(colors_bottom))
+            # revolving index for colors
             transp = 1.0 if i < N_top else 0.5
             lw = 5 if i < N_top else 1.5
             msize = 16 if i < N_top else 8
+            label_wgt = 'bold' if i < N_top else 'normal'
             if i == 0:
                 prod_color = 'g'
             elif i > 0 and i < N_top:
@@ -858,6 +919,7 @@ def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5,
         else:
             ci = i % len(palate)
             lw, transp, msize = 1, 1, 14
+            label_wgt = 'normal'
             prod_color = palate[ci]
 
         ax.plot(df_revd[col], linewidth=lw, color=prod_color, alpha=transp,
@@ -866,14 +928,10 @@ def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5,
         # Product labels
         ax.text(df.index[-1] + pd.DateOffset(label_offset), -labeler[i][0],
                 labeler[i][1], color=prod_color, alpha=transp,
-                va='center', fontsize=16)
-
-    plt.annotate(footnote, (0.5, -footnote_pad/len(df.columns)),
-                 xycoords='axes fraction',
-                 fontsize=14, va='bottom', ha='center')
+                va='center', fontsize=16, fontweight=label_wgt)
 
     plt.tight_layout()
-    plt.subplots_adjust(bottom=.3, top=.9)
+    plt.subplots_adjust(bottom=fig_margins[0], top=fig_margins[1])
 
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
@@ -899,7 +957,7 @@ def BestSeller_x_labels(df_index):
     counter = 0
 
     for i, dt in enumerate(df_index):
-        # Add yr to first label if Jan not in DateIndex.
+        # Add yr to first label if January not in DateIndex.
         if Jan_bool == False and i == 0:
             x_labels.append(datetime.strftime(dt, dt_form_B))
             counter += 1
