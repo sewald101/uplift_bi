@@ -45,6 +45,8 @@ from trend_analysis import CompTrendsDF # compares products by ts data
 from trend_analysis import RankProducts # returns ranked results
 from trend_analysis import HbarData
 
+from strain_dict import strain_dict, names_formatted, product_name_from_ID
+
 
 """Graphic design adapted from: http://www.randalolson.com/2014/06/28/how-to-make-beautiful-data-visualizations-in-python-with-matplotlib/
 """
@@ -213,7 +215,7 @@ def PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
             rcParams['axes.titlepad'] = 50
 
     if write_path:
-        plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25)
+        plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25, dpi=300)
 
     plt.tight_layout()
     plt.subplots_adjust(bottom=fig_margins[0], top=fig_margins[1])
@@ -408,7 +410,7 @@ def HbarRanked(products=None, period_wks=10, end_date=None,
 
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
-                   dpi=1000)
+                   dpi=300)
     plt.show()
 
 
@@ -668,11 +670,11 @@ Separate, Filled Trend Plots for Products on Same Y_Scale
 
 """
 
-def PlotFilledTrends(products, period_wks=10, end_date=None,
+def PlotFilledTrends(df=None, products=None, period_wks=10, end_date=None,
                      compute_on_sales=True, MA_param=None, shifted=False,
-                     normed=False, baseline='t_zero', max_yticks=10, fig_height=7,
-                     fig_margins=(None, 0.85, 0.60), trunc_yticks=False,
-                     txt=None, write_path=None):
+                     normed=False, baseline='t_zero',fig_height=7,
+                     fig_margins=(None, 0.85, 0.60), max_yticks=10, trunc_yticks=False,
+                     fill_plot=True, txt=None, write_path=None):
     """Separately plot sales trends for products on identical y-scales and
     trend parameters.
 
@@ -680,37 +682,46 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
     assign value MA_param= for moving average. Optionally may assign True
     to either shifted= or normed= arguments (NOT BOTH).
 
-        ARGUMENTS:
-     -- products: (list of ints or strings) product IDs and/or names for ranking
-     -- period_wks: (int, default=10) sample period for time series in weeks
+    DATA ARGUMENTS:
+     -- df: CompTrendsDF object (pandas DataFrame)
+
+    If df not provided:
+     -- products: (list of ints or strings) product names and/or IDs for
+          statistical comparison
+     -- period_wks: (int) sampling period in weeks
      -- end_date: (date string: '07/15/2016', default=None) date string defining
-          end of sampling period. Default uses most recent date in dataset.
+          end of sampling period. Default uses most recent date.
      -- compute_on_sales: (bool, default=True) computes on sales data; if False,
           computes on units-sold data
      -- MA_param: (int) return dataframe of moving averages; int defines "boxcar"
           window, in weeks, by which to compute moving average
-     -- shifted: (bool, default=False) shift trend data to baseline
+     -- shifted: (bool, default=False) shift trend data to t0 = 0
      -- normed: (bool, default=False) rescale data to feature range (-1, 1)
-          then shift data to baseline.
+          then shift data such that t0 = 0.
      -- baseline: (str, default='t_zero') baseline for shifing data; values:
           * 't_zero' -- shift data by value at t0
-          * 'mean' -- shift data by the mean
-          * 'median' -- shift data by the median
+          * 'mean' -- shift data to mean = 0
+          * 'median' -- shift data to median = 0
+
+    GRAPHIC ARGUMENTS:
      -- fig_height: (int, default=7) factor for y-dimension of plt.figure
      -- fig_margins: (tuple of floats, default=(None, 0.85, 0.6)) variables to adjust figure margins
           via kwargs in plt.subplots_adjust, tuple: (bottom=, top=, hspace=)
           See: https://matplotlib.org/devdocs/api/_as_gen/matplotlib.pyplot.subplots_adjust.html
+     -- max_yticks: (int, default=10)
      -- trunc_yticks: (bool, default=False) If True, remove yticks between zero
           and step below lowest data value and set that step as x-axis
+     -- fill_plot: (bool, default=True) Fill areas between curve and baseline
      -- txt: (list of tuples, default=None): manual specification of titles, subtitles
           and footnotes, each specified per the matplotlib.pyplot.text args and kwargs in tuple:
           (text(str), y-pos(float), fontsize(int), fontweight(str), color(str))
           See: https://matplotlib.org/api/_as_gen/matplotlib.pyplot.text.html
      -- write_path: (str, default=None) write graph to 'path/file'
     """
-    df = CompTrendsDF(products, period_wks, end_date=end_date,
-                    compute_on_sales=compute_on_sales, MA_param=MA_param,
-                     shifted=shifted, normed=normed, baseline=baseline)
+    if df is None:
+        df = CompTrendsDF(products, period_wks, end_date=end_date,
+                        compute_on_sales=compute_on_sales, MA_param=MA_param,
+                         shifted=shifted, normed=normed, baseline=baseline)
 
     products = df.columns
     fig, axs = plt.subplots(len(products), 1, squeeze=False, sharex='row',
@@ -745,9 +756,11 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
         y_pos[y_pos < 0] = np.nan
         y_neg[y_neg >= 0] = np.nan
         ax.plot(y_pos, lw=2.5, color='green')
-        ax.fill_between(y_pos.index, y_pos, facecolor='green', alpha=0.5)
+        if fill_plot:
+            ax.fill_between(y_pos.index, y_pos, facecolor='green', alpha=0.5)
         ax.plot(y_neg, lw=2.5, color='0.3')
-        ax.fill_between(y_neg.index, y_neg, facecolor='0.3', alpha=0.5)
+        if fill_plot:
+            ax.fill_between(y_neg.index, y_neg, facecolor='0.3', alpha=0.5)
         ax.axhline(lw=1.5, color='0.6')
 
 
@@ -816,7 +829,7 @@ def PlotFilledTrends(products, period_wks=10, end_date=None,
 
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
-                   dpi=1000)
+                   dpi=300)
 
     plt.show()
 
@@ -902,7 +915,7 @@ def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5,
     colors_top.reverse()
     colors_bottom = ['0.1', '0.4', '0.7']
     label_offset = d_range / 20. if d_range > 14 else 1
-    for i, col in enumerate(df.columns):
+    for i, col in enumerate(df_revd.columns):
         if N_top:
             ci = i % min(len(colors_top), len(colors_bottom))
             # revolving index for colors
@@ -926,16 +939,20 @@ def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5,
                 marker='o', markersize=msize, zorder=len(df)-i)
 
         # Product labels
-        ax.text(df.index[-1] + pd.DateOffset(label_offset), -labeler[i][0],
-                labeler[i][1], color=prod_color, alpha=transp,
-                va='center', fontsize=16, fontweight=label_wgt)
+        ax.text(
+                df.index[-1] + pd.DateOffset(label_offset),
+                -labeler[names_formatted[df.columns[i]]],
+                names_formatted[df.columns[i]],
+                color=prod_color,alpha=transp, va='center', fontsize=16,
+                fontweight=label_wgt
+            )
 
     plt.tight_layout()
     plt.subplots_adjust(bottom=fig_margins[0], top=fig_margins[1])
 
     if write_path:
         plt.savefig(write_path, bbox_inches='tight', pad_inches=0.25,
-                   dpi=1000)
+                   dpi=300)
 
     plt.show()
 

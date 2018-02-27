@@ -796,8 +796,10 @@ def BestSellerData(products, end_date=None, period_wks=10, MA_param=5,
 
     labels = [names_formatted[product_name_from_ID(prod_ID)] \
               for prod_ID in df_A.iloc[:,-1]]
-    label_pos = df_B.iloc[-1,:].values
-    labeler = zip(label_pos, labels)
+    labeler = {}
+    for i, prod in enumerate(labels):
+        labeler[prod] = i + 1
+
 
     return df_A, df_B, labeler
 
