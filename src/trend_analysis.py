@@ -271,10 +271,16 @@ class ProductTrendsDF(object):
 
     def _slice_timeseries(self):
         """Construct ts_sample attribute"""
-        date_index = pd.to_datetime(self.end_date)
+        idx_end = pd.to_datetime(self.end_date)
         offset = pd.DateOffset(self._period_days - 1)
         if self.end_date:
-            self.ts_sample = self.ts[date_index - offset:date_index]
+            sample_idx = pd.date_range(
+                start=idx_end - offset, end=idx_end
+                )
+            sample_df = pd.DataFrame(index=sample_idx)
+            sample_df['vals'] = self.ts[sample_idx]
+            self.ts_sample = sample_df.iloc[:,0]
+            self.ts_sample.name = self.ts.name
         else: # else use most recent date available
             self.ts_sample = self.ts[-self._period_days:]
 
@@ -345,7 +351,7 @@ class ProductTrendsDF(object):
 
 def ProductStatsDF(products, period_wks, end_date=None, MA_params=None,
                   exp_smooth_params=None, normed=True, baseline='t_zero',
-                  compute_on_sales=True):
+                  compute_on_sales=True, NaN_allowance=5, print_rejects=False):
     """Construct DataFrame showing comparative sales stats among multiple products.
     See output DataFrame.name attribute for title.
 
@@ -371,8 +377,16 @@ def ProductStatsDF(products, period_wks, end_date=None, MA_params=None,
           * 'median' -- shift data by the median
      -- compute_on_sales: (bool, default=True) computes on sales data; if False,
           computes on units-sold data
+     -- NaN_allowance: (int from 0 to 100, default=5) max allowable percent of
+          NaNs in product ts samples for statistical aggregation; products
+          exceeding threshold are discarded from output DataFrame and reported
+          in rejection dictionary
+     -- print_rejects: (bool, default=False) If True, print any products rejected
+          for excess null values in sample with the corresponding ratio of nulls
+          present
     """
     data = []
+    rejected = {}
     counter = 0
     df_name = None
     for product in products:
@@ -385,7 +399,15 @@ def ProductStatsDF(products, period_wks, end_date=None, MA_params=None,
         trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
                                      exp_smooth_params, normed, baseline)
         trends_data.main()
-        data.append(trends_data.trend_stats)
+
+        # If null vals in sample exceed allowance threshold, dump product into
+        # rejected dict and exclude from output DF
+        if trends_data.NaNs_ratio > NaN_allowance / 100.:
+            rejected[trends_data.product_ID] = trends_data.NaNs_ratio
+            continue
+
+        else:
+            data.append(trends_data.trend_stats)
 
         if counter < 1: # first loop, extract df name from ProductTrendsDF
             df_name = trends_data.trendsDF.name.split(') ')[1]
@@ -393,6 +415,19 @@ def ProductStatsDF(products, period_wks, end_date=None, MA_params=None,
 
     product_stats_df = pd.DataFrame(data, columns=data[0].keys())
     product_stats_df.name = df_name
+
+    if print_rejects:
+        if len(rejected) > 0:
+            print('Data for the following samples exceeded allowance for null '
+                  'values and were excluded from statistical aggregation:\n')
+            for k, v in iteritems(rejected):
+                print('{} (ID:{}) -- Percent Null Values: {}%').format(
+                    names_formatted[product_name_from_ID(k)],
+                    k,
+                    round(v * 100, 2)
+                )
+            print '\n'
+
     return product_stats_df
 
 
