@@ -123,8 +123,8 @@ class ProductTrendsDF(object):
 
     INPUT:
      -- ts: ImportSalesData.sales or .units_sold object (pandas Series)
-     -- period_wks: (int) date span in weeks measured back from most recent datum,
-          used to define sampling period
+     -- period_wks: (int) date span of sampling period in weeks measured back
+          from most recent datum or from user-supplied end_date
      -- end_date: (date string of form: '07/15/2016', default=None) alternative
           end-date for sampling period (default=None)
      -- MA_params: (list of ints, default=None) one or more rolling "boxcar"
@@ -149,6 +149,7 @@ class ProductTrendsDF(object):
      -- product_ID: (int) extracted from ts.name
      -- sales_col_name: (str) either 'daily sales' or 'daily units sold', extracted
           from ts.name
+     -- NaNs_ratio: (float) ratio of NaNs to total days in ts sample
 
     METHODS:
      -- main(): run after initialization to populate trendsDF
@@ -177,24 +178,28 @@ class ProductTrendsDF(object):
         self.ts_sample = None
         self.trendsDF = None
         self.trend_stats = OrderedDict()
+        self.NaNs_ratio = None
 
 
     def main(self):
         self._constuct_basic_trendsDF()
         if self.MA_params:
             self._compute_rolling_averages()
-        if self.exp_smooth_params:
-            self._compute_exp_smoothed_trends()
+        # if self.exp_smooth_params:
+        #     self._compute_exp_smoothed_trends()
         self.aggregate_stats()
 
 
     def _constuct_basic_trendsDF(self):
         """DF with sales over period"""
         self._slice_timeseries()
-        self.trendsDF = pd.DataFrame(data=self.ts_sample.values,
+        self.trendsDF = pd.DataFrame(data=self.ts_sample.fillna(0.0).values,
                                     columns=[self.sales_col_name.lower()],
                                     index=self.ts_sample.index
                                     )
+        self.NaNs_ratio = (
+            self.ts_sample.isnull().sum() / float(len(self.ts_sample))
+            )
 
         self.trendsDF.name = self._trendsDF_name()
 
@@ -208,9 +213,9 @@ class ProductTrendsDF(object):
             self.trendsDF['SHIFTED to median=0'] = \
                 self.trendsDF.iloc[:,0] - np.median(self.trendsDF.iloc[:,-1])
 
-
-        self.trendsDF['NORMD'] = \
-            self.norm_Series(self.trendsDF.iloc[:,0])
+        if self.normed:
+            self.trendsDF['NORMD'] = \
+                self.norm_Series(self.trendsDF.iloc[:,0])
 
 
     def _compute_rolling_averages(self):
@@ -219,9 +224,11 @@ class ProductTrendsDF(object):
         for wk_window in self.MA_params:
             boxcar = wk_window * 7
             col_name = '{}wk MA'.format(wk_window)
-            self.raw_df[col_name] = self.ts.rolling(window=boxcar).mean()
+            self.raw_df[col_name] = \
+                self.ts.fillna(0.0).rolling(window=boxcar).mean()
             self.trendsDF[col_name] = \
                 self.raw_df[col_name][self.trendsDF.index].apply(rounder)
+
             # Shift moving averages to baseline
             if self.baseline == 't_zero':
                 self.trendsDF[col_name + ' SHIFTED to t0=0'] = \
@@ -237,9 +244,6 @@ class ProductTrendsDF(object):
                 normed_col_name = '{}wk MA NORMD'.format(wk_window)
                 self.trendsDF[normed_col_name] = \
                     self.norm_Series(self.trendsDF[col_name])
-                    # This takes the shifted MA values that start with zero,
-                    #  rescales them (-50, 50), then shifts them again to zero
-                    #  resuling in a data range of (-100, 100).
 
 
     def aggregate_stats(self):
@@ -248,8 +252,7 @@ class ProductTrendsDF(object):
         self.trend_stats['product_name'] = self.product_name
         self.trend_stats['product_id'] = self.product_ID
         self.trend_stats['avg weekly ' + self.sales_col_name.lower()] = \
-            round(sum(self.trendsDF[self.trendsDF.columns[0]]) / self.period_wks,
-            0)
+            round(self.trendsDF.iloc[:,0].sum() / self.period_wks, 0)
 
         if 'units' in self.sales_col_name.lower():
             sales_or_units = ' (units)'
@@ -296,7 +299,7 @@ class ProductTrendsDF(object):
     def norm_Series(self, col):
         """Return time series rescaled then shifted to baseline.
         """
-        values = col.values
+        values = col.fillna(0.0).values
         values = values.reshape(-1,1)
         scaler = MinMaxScaler(feature_range=(-50,50))
         scaler = scaler.fit(values)
@@ -318,18 +321,18 @@ class ProductTrendsDF(object):
         """
         if log_scaled:
             if np.trapz(ts.values) < 0:
-                return -1 * np.log(-1 * np.trapz(ts.values))
+                return -1 * np.log(-1 * np.trapz(ts.fillna(0.0)))
             else:
-                return np.log(np.trapz(ts.values))
+                return np.log(np.trapz(ts.fillna(0.0)))
 
         elif sqrt_scaled:
             if np.trapz(ts.values) < 0:
-                return -1 * np.sqrt(-1 * np.trapz(ts.values))
+                return -1 * np.sqrt(-1 * np.trapz(ts.fillna(0.0)))
             else:
-                return np.sqrt(np.trapz(ts.values))
+                return np.sqrt(np.trapz(ts.fillna(0.0)))
 
         else:
-            return np.trapz(ts.values)
+            return np.trapz(ts.fillna(0.0))
 
 
     def compute_aggr_slope(self, ts):
