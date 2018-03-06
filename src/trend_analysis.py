@@ -44,6 +44,8 @@ class ImportSalesData(object):
      -- units_sold: pandas time series (Series) of total daily units sold
      -- product_id (int)
      -- product_name (string)
+     -- ts_start, ts_end (Datetime) start and end dates for time series, to assist
+           testing for continuity and synchronization among comparative products
 
     NOTE: DataFrame and Series title strings with product name and ID may be accessed
         via DataFrame.name and Series.name attributes
@@ -59,6 +61,7 @@ class ImportSalesData(object):
         self.product_df = None
         self.sales = None
         self.units_sold = None
+        self.ts_start, self.ts_end = None, None
 
     def main(self):
         self._retrieve_ID()
@@ -90,10 +93,18 @@ class ImportSalesData(object):
         self._conn = create_engine(self._connection_str)
 
     def _SQL2pandasdf(self):
-        raw_df = pd.read_sql_query(self._query, self._conn)
-        self.product_df = pd.DataFrame(raw_df[['ttl_sales', 'ttl_units_sold']])
-        self.product_df.index = pd.DatetimeIndex(raw_df['date'])
-        self.product_name = raw_df['product_name'].unique()[0]
+        stage_1 = pd.read_sql_query(self._query, self._conn)
+        stage_2 = pd.DataFrame(stage_1[['ttl_sales', 'ttl_units_sold']])
+        stage_2.index = pd.DatetimeIndex(stage_1['date'])
+
+        # Construct continuous time series even if data is discontinuous
+        self.ts_start, self.ts_end = stage_2.index[0], stage_2.index[-1]
+        main_idx = pd.date_range(start=self.ts_start, end=self.ts_end)
+        self.product_df = pd.DataFrame(index=main_idx)
+
+        self.product_df['ttl_sales'] = stage_2['ttl_sales']
+        self.product_df['ttl_units_sold'] = stage_2['ttl_units_sold']
+        self.product_name = names_formatted[product_name_from_ID(self.product_id)]
         df_name = '{} (ID: {})'.format(self.product_name, self.product_id)
         self.product_df.name = df_name
 
@@ -261,7 +272,7 @@ class ProductTrendsDF(object):
         offset = pd.DateOffset(self._period_days - 1)
         if self.end_date:
             self.ts_sample = self.ts[date_index - offset:date_index]
-        else:
+        else: # else use most recent date available
             self.ts_sample = self.ts[-self._period_days:]
 
 
@@ -340,7 +351,7 @@ def ProductStatsDF(products, period_wks, end_date=None, MA_params=None,
           statistical comparison
      -- period_wks: (int) sampling period in weeks
 
-     OPTIONAL
+     OPTIONAL:
      -- end_date: (date string: '07/15/2016', default=None) date string defining
           end of sampling period. Default uses most recent date.
      -- MA_params: (list of ints, default=None) one or more rolling "boxcar"
