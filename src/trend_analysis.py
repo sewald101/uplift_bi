@@ -496,6 +496,14 @@ def CompTrendsDF(products, period_wks, end_date, MA_param=None,
           converted NaNs by using tag value such as 0.0001. Set to None to generate
           a CompTrendsDF with only raw, unsmoothed sample data, NaNs in place.
     """
+    # Notify user of special arguments error
+    if NaN_filler is None and (MA_param or exp_smooth_param or shifted or normed):
+        print ("ERROR: MISSING NaN_filler VALUE\n"
+        "Value (int or float) must be provided for NaN_filler with MA_param, shifted=True"
+        " or normed=True arguments."
+        )
+        return None
+
     # Column number to grab specified trend-type from TrendsDF object
     col_index = column_sel(MA_param, exp_smooth_param, shifted, normed)
 
