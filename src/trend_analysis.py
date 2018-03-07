@@ -126,7 +126,7 @@ class ProductTrendsDF(object):
      -- period_wks: (int) date span of sampling period in weeks measured back
           from most recent datum or from user-supplied end_date
      -- end_date: (date string of form: '07/15/2016', default=None) alternative
-          end-date for sampling period (default=None)
+          end-date for sampling period; default uses most recent datum
      -- MA_params: (list of ints, default=None) one or more rolling "boxcar"
           windows, in weeks, by which to generate distinct columns of moving-
           average data
@@ -140,6 +140,11 @@ class ProductTrendsDF(object):
           * 't_zero' -- shift data by value at t0
           * 'mean' -- shift data by the mean
           * 'median' -- shift data by the median
+     -- NaN_filler: (float or None, default=0.0) fillna value for raw data, allows marking
+          converted NaNs by using tag value such as 0.0001. Set to None to generate
+          a trendsDF with only raw sample data, NaNs in place. Note: All computations
+          and statistical aggregation on smoothed trends use fillna = 0.0.
+
 
     ATTRIBUTES:
      -- trendsDF: (pandas DataFrame)
@@ -150,6 +155,7 @@ class ProductTrendsDF(object):
      -- sales_col_name: (str) either 'daily sales' or 'daily units sold', extracted
           from ts.name
      -- NaNs_ratio: (float) ratio of NaNs to total days in ts sample
+
 
     METHODS:
      -- main(): run after initialization to populate trendsDF
@@ -162,7 +168,8 @@ class ProductTrendsDF(object):
     """
 
     def __init__(self, ts, period_wks, end_date=None, MA_params=None,
-                    exp_smooth_params=None, normed=True, baseline='t_zero'):
+                    exp_smooth_params=None, normed=True, baseline='t_zero',
+                    NaN_filler=0.0):
         self.ts = ts
         self.raw_df = None
         self.period_wks = period_wks
@@ -172,6 +179,7 @@ class ProductTrendsDF(object):
         self.exp_smooth_params = exp_smooth_params
         self.normed = normed
         self.baseline = baseline
+        self.NaN_filler = NaN_filler
         self.product_name = self.ts.name.split('(')[0].strip()
         self.product_ID = int(self.ts.name.split(')')[0].split(' ')[-1])
         self.sales_col_name = self.ts.name.split(' -- Daily ')[-1]
@@ -183,39 +191,50 @@ class ProductTrendsDF(object):
 
     def main(self):
         self._constuct_basic_trendsDF()
-        if self.MA_params:
-            self._compute_rolling_averages()
-        # if self.exp_smooth_params:
-        #     self._compute_exp_smoothed_trends()
+
+        if self.NaN_filler is not None:
+            if self.MA_params:
+                self._compute_rolling_averages()
+                # if self.exp_smooth_params:
+                #     self._compute_exp_smoothed_trends()
         self.aggregate_stats()
 
 
     def _constuct_basic_trendsDF(self):
         """DF with sales over period"""
+        # populate ts_sample attribute
         self._slice_timeseries()
-        self.trendsDF = pd.DataFrame(data=self.ts_sample.fillna(0.0).values,
-                                    columns=[self.sales_col_name.lower()],
-                                    index=self.ts_sample.index
-                                    )
+        # compute ratio of NaNs in ts_sample
         self.NaNs_ratio = (
             self.ts_sample.isnull().sum() / float(len(self.ts_sample))
             )
+        # contruct base trendsDF object
+        self.trendsDF = pd.DataFrame(
+                    data=self.ts_sample.values,
+                    columns=[self.sales_col_name.lower()],
+                    index=self.ts_sample.index
+                    )
+
+        if self.NaN_filler is not None:
+            self.trendsDF.fillna(self.NaN_filler, inplace=True)
 
         self.trendsDF.name = self._trendsDF_name()
 
-        if self.baseline == 't_zero':
-            self.trendsDF['SHIFTED to t0=0'] = \
-                self.trendsDF.iloc[:,0] - self.trendsDF.iloc[:,-1][0]
-        if self.baseline == 'mean':
-            self.trendsDF['SHIFTED to mean=0'] = \
-                self.trendsDF.iloc[:,0] - self.trendsDF.iloc[:-1].mean()
-        if self.baseline == 'median':
-            self.trendsDF['SHIFTED to median=0'] = \
-                self.trendsDF.iloc[:,0] - np.median(self.trendsDF.iloc[:,-1])
+        # Only add columns for shifted and normed trends on NaN-filled data
+        if self.NaN_filler is not None:
+            if self.baseline == 't_zero':
+                self.trendsDF['SHIFTED to t0=0'] = \
+                    self.trendsDF.iloc[:,0] - self.trendsDF.iloc[:,-1][0]
+            if self.baseline == 'mean':
+                self.trendsDF['SHIFTED to mean=0'] = \
+                    self.trendsDF.iloc[:,0] - self.trendsDF.iloc[:-1].mean()
+            if self.baseline == 'median':
+                self.trendsDF['SHIFTED to median=0'] = \
+                    self.trendsDF.iloc[:,0] - np.median(self.trendsDF.iloc[:,-1])
 
-        if self.normed:
-            self.trendsDF['NORMD'] = \
-                self.norm_Series(self.trendsDF.iloc[:,0])
+            if self.normed:
+                self.trendsDF['NORMD'] = \
+                    self.norm_Series(self.trendsDF.iloc[:,0])
 
 
     def _compute_rolling_averages(self):
@@ -225,7 +244,7 @@ class ProductTrendsDF(object):
             boxcar = wk_window * 7
             col_name = '{}wk MA'.format(wk_window)
             self.raw_df[col_name] = \
-                self.ts.fillna(0.0).rolling(window=boxcar).mean()
+                self.ts.fillna(0).rolling(window=boxcar).mean()
             self.trendsDF[col_name] = \
                 self.raw_df[col_name][self.trendsDF.index].apply(rounder)
 
@@ -271,9 +290,9 @@ class ProductTrendsDF(object):
 
     def _slice_timeseries(self):
         """Construct ts_sample attribute"""
-        idx_end = pd.to_datetime(self.end_date)
         offset = pd.DateOffset(self._period_days - 1)
         if self.end_date:
+            idx_end = pd.to_datetime(self.end_date)
             sample_idx = pd.date_range(
                 start=idx_end - offset, end=idx_end
                 )
@@ -282,7 +301,14 @@ class ProductTrendsDF(object):
             self.ts_sample = sample_df.iloc[:,0]
             self.ts_sample.name = self.ts.name
         else: # else use most recent date available
-            self.ts_sample = self.ts[-self._period_days:]
+            idx_end = self.ts.index[-1]
+            sample_idx = pd.date_range(
+                start=idx_end - offset, end=idx_end
+                )
+            sample_df = pd.DataFrame(index=sample_idx)
+            sample_df['vals'] = self.ts[sample_idx]
+            self.ts_sample = sample_df.iloc[:,0]
+            self.ts_sample.name = self.ts.name
 
 
     def _trendsDF_name(self):
@@ -305,7 +331,7 @@ class ProductTrendsDF(object):
     def norm_Series(self, col):
         """Return time series rescaled then shifted to baseline.
         """
-        values = col.fillna(0.0).values
+        values = col.fillna(0).values
         values = values.reshape(-1,1)
         scaler = MinMaxScaler(feature_range=(-50,50))
         scaler = scaler.fit(values)
@@ -327,18 +353,18 @@ class ProductTrendsDF(object):
         """
         if log_scaled:
             if np.trapz(ts.values) < 0:
-                return -1 * np.log(-1 * np.trapz(ts.fillna(0.0)))
+                return -1 * np.log(-1 * np.trapz(ts.fillna(0)))
             else:
-                return np.log(np.trapz(ts.fillna(0.0)))
+                return np.log(np.trapz(ts.fillna(0)))
 
         elif sqrt_scaled:
             if np.trapz(ts.values) < 0:
-                return -1 * np.sqrt(-1 * np.trapz(ts.fillna(0.0)))
+                return -1 * np.sqrt(-1 * np.trapz(ts.fillna(0)))
             else:
-                return np.sqrt(np.trapz(ts.fillna(0.0)))
+                return np.sqrt(np.trapz(ts.fillna(0)))
 
         else:
-            return np.trapz(ts.fillna(0.0))
+            return np.trapz(ts.fillna(0))
 
 
     def compute_aggr_slope(self, ts):
@@ -349,7 +375,7 @@ class ProductTrendsDF(object):
 
 
 
-def ProductStatsDF(products, period_wks, end_date=None, MA_params=None,
+def ProductStatsDF(products, period_wks, end_date, MA_params=None,
                   exp_smooth_params=None, normed=True, baseline='t_zero',
                   compute_on_sales=True, NaN_allowance=5, print_rejects=False):
     """Construct DataFrame showing comparative sales stats among multiple products.
@@ -359,10 +385,10 @@ def ProductStatsDF(products, period_wks, end_date=None, MA_params=None,
      -- products: (list of ints or strings) list of product names and/or IDs for
           statistical comparison
      -- period_wks: (int) sampling period in weeks
+     -- end_date: (date string of form: '07/15/2016') date string defining
+          end of sampling period for comparison
 
      OPTIONAL:
-     -- end_date: (date string: '07/15/2016', default=None) date string defining
-          end of sampling period. Default uses most recent date.
      -- MA_params: (list of ints, default=None) one or more rolling "boxcar"
           windows, in weeks, by which to compute moving averages
      -- exp_smooth_params: (list of floats, default=None) one or more alpha
@@ -396,8 +422,10 @@ def ProductStatsDF(products, period_wks, end_date=None, MA_params=None,
             ts = raw_data.sales
         else:
             ts = raw_data.units_sold
+
         trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
-                                     exp_smooth_params, normed, baseline)
+                                     exp_smooth_params, normed, baseline,
+                                     NaN_filler=0.0)
         trends_data.main()
 
         # If null vals in sample exceed allowance threshold, dump product into
@@ -418,9 +446,9 @@ def ProductStatsDF(products, period_wks, end_date=None, MA_params=None,
 
     if print_rejects:
         if len(rejected) > 0:
-            print('Data for the following samples exceeded allowance for null '
-                  'values and were excluded from statistical aggregation:\n')
-            for k, v in iteritems(rejected):
+            print('Data for the following samples exceeded allowance for\n'
+                  'null values and were excluded from statistical aggregation:\n')
+            for k, v in rejected.iteritems():
                 print('{} (ID:{}) -- Percent Null Values: {}%').format(
                     names_formatted[product_name_from_ID(k)],
                     k,
@@ -432,46 +460,58 @@ def ProductStatsDF(products, period_wks, end_date=None, MA_params=None,
 
 
 
-def CompTrendsDF(products, period_wks, end_date=None, MA_param=None,
+def CompTrendsDF(products, period_wks, end_date, MA_param=None,
                   exp_smooth_param=None, shifted=False, normed=False,
-                  baseline='t_zero', compute_on_sales=True):
+                  baseline='t_zero', compute_on_sales=True, NaN_filler=0.0):
     """Construct DataFrame with time series across multiple products. Default
-    arguments return a DataFrame with time series of raw sales data. Otherwise,
-    assign value to either MA_param= or exp_smooth_param= (NOT BOTH). Optionally
-    may assign True to either shifted= or normed= arguments (NOT BOTH).
+    arguments return a DataFrame with time series of raw sales data, NaNs filled
+    with 0.0. Otherwise, assign value to either MA_param= or exp_smooth_param= (NOT BOTH).
+    Optionally may assign True to either shifted= or normed= arguments (NOT BOTH).
+    To preserve discontinuities in data (i.e., NaNs) set NaN_filler to None or a tag
+    value such as 0.0001
 
     ARGUMENTS:
      -- products: (list of ints or strings) product names and/or IDs for
           statistical comparison
      -- period_wks: (int) sampling period in weeks
-     -- end_date: (date string: '07/15/2016', default=None) date string defining
-          end of sampling period. Default uses most recent date.
+     -- end_date: (date string: '07/15/2016') date string defining
+          end of sampling period.
      -- MA_param: (int) return dataframe of moving averages; int defines "boxcar"
           window, in weeks, by which to compute moving average
+          NOTE: requires value for NaN_filler (!= None)
      -- exp_smooth_params: (float (0 < f < 1), default=None) return dataframe of
           exponentially smoothed trends; float provides alpha smoothing factor
      -- shifted: (bool, default=False) shift trend data to t0 = 0
+          NOTE: requires value for NaN_filler
      -- normed: (bool, default=False) rescale data to feature range (-1, 1)
           then shift data such that t0 = 0.
+          NOTE: requires value for NaN_filler
      -- baseline: (str, default='t_zero') baseline for shifing data; values:
           * 't_zero' -- shift data by value at t0
           * 'mean' -- shift data to mean = 0
           * 'median' -- shift data to median = 0
      -- compute_on_sales: (bool, default=True) computes on sales data; if False,
           computes on units-sold data
+     -- NaN_filler: (float or None, default=0.0) fillna value for raw data, allows marking
+          converted NaNs by using tag value such as 0.0001. Set to None to generate
+          a CompTrendsDF with only raw, unsmoothed sample data, NaNs in place.
     """
-
+    # Column number to grab specified trend-type from TrendsDF object
     col_index = column_sel(MA_param, exp_smooth_param, shifted, normed)
+
+    # Title elements
     if MA_param:
-        A = '{}-Week Moving Average of '.format(MA_param) # DF title element
+        A = '{}-Week Moving Average of '.format(MA_param)
         MA_param = [MA_param] # insert single param to list for ProductTrendsDF class
     if exp_smooth_param:
         B = ', Exponentially Smoothed (alpha: {})'.format(exp_smooth_param)
         exp_smooth_param = [exp_smooth_param]
+
     counter = 0
 
     for product in products:
-        if counter < 1: # Construct base dataframe from first product
+        # Construct base dataframe from first product
+        if counter < 1:
             stage_1 = ImportSalesData(product)
             stage_1.main()
             if compute_on_sales:
@@ -480,9 +520,15 @@ def CompTrendsDF(products, period_wks, end_date=None, MA_param=None,
                 stage_1_ts = stage_1.units_sold
 
             stage_2 = ProductTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
-                            exp_smooth_param, normed, baseline)
+                            exp_smooth_param, normed=True, baseline=baseline,
+                            NaN_filler=NaN_filler)
             stage_2.main()
             seed_df = stage_2.trendsDF
+
+            # if data ends before user-specified end_date, fill remaining data
+            if NaN_filler is not None:
+                seed_df.fillna(NaN_filler, inplace=True)
+
 
             # Construct comp_trends_df title
             bsln = baseline.capitalize() if baseline != 't_zero' else 'T0 = 0'
@@ -508,7 +554,8 @@ def CompTrendsDF(products, period_wks, end_date=None, MA_param=None,
             if col_index == 5 and exp_smooth_param and normed:
                 title = E + B + D
 
-            col_name = [stage_2.product_name]
+            # col_name = [stage_2.product_name]
+
             comp_trends_df = pd.DataFrame(seed_df[seed_df.columns[col_index]])
             comp_trends_df.columns = [stage_2.product_name]
             comp_trends_df.name = title
@@ -523,9 +570,14 @@ def CompTrendsDF(products, period_wks, end_date=None, MA_param=None,
                 stage_1_ts = stage_1.units_sold
 
             stage_2 = ProductTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
-                            exp_smooth_param, normed, baseline)
+                            exp_smooth_param, normed=True, baseline=baseline,
+                            NaN_filler=NaN_filler)
             stage_2.main()
-            source_df = stage_2.trendsDF
+            source_df = stage_2.trendsDF#.fillna(0.0, inplace=True)
+
+            # if data ends before user-specified end_date, fill remaining data
+            if NaN_filler is not None:
+                source_df.fillna(NaN_filler, inplace=True)
 
             comp_trends_df[stage_2.product_name] = source_df.iloc[:,col_index]
 

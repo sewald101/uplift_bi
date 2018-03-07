@@ -51,6 +51,32 @@ from strain_dict import strain_dict, names_formatted, product_name_from_ID
 """Graphic design adapted from: http://www.randalolson.com/2014/06/28/how-to-make-beautiful-data-visualizations-in-python-with-matplotlib/
 """
 
+"""
+~~~~~~~~~~~~~~~~~~~~~~~
+Line Plot of Raw Product Sales Data
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+"""
+
+def PlotRawData(product, plot_sales=True, fig_height=4):
+    """
+    Plot raw sales or units sold data over its complete time series.
+    """
+
+    # Get data
+    stage_1 = ImportSalesData(product)
+    stage_1.main()
+    if plot_sales:
+        ts = stage_1.sales
+    else:
+        ts = stage_1.units_sold
+
+    # Plot data
+    plt.figure(figsize=(16, fig_height))
+    plt.plot(ts)
+    plt.show()
+
+
 
 """
 ~~~~~~~~~~~~~~~~~~~~~~~
