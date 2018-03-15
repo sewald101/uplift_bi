@@ -377,7 +377,8 @@ class ProductTrendsDF(object):
 
 def ProductStatsDF(products, period_wks, end_date, MA_params=None,
                   exp_smooth_params=None, normed=True, baseline='t_zero',
-                  compute_on_sales=True, NaN_allowance=5, print_rejects=False):
+                  compute_on_sales=True, NaN_allowance=5, print_rejects=False,
+                  return_rejects=False):
     """Construct DataFrame showing comparative sales stats among multiple products.
     See output DataFrame.name attribute for title.
 
@@ -403,13 +404,15 @@ def ProductStatsDF(products, period_wks, end_date, MA_params=None,
           * 'median' -- shift data by the median
      -- compute_on_sales: (bool, default=True) computes on sales data; if False,
           computes on units-sold data
-     -- NaN_allowance: (int from 0 to 100, default=5) max allowable percent of
-          NaNs in product ts samples for statistical aggregation; products
-          exceeding threshold are discarded from output DataFrame and reported
-          in rejection dictionary
+     -- NaN_allowance: (int or float from 0 to 100, default=5) max allowable
+          percentage of NaNs in product ts samples for statistical aggregation;
+          products exceeding allowance are discarded from output DataFrame and
+          reported in rejection dictionary
      -- print_rejects: (bool, default=False) If True, print any products rejected
-          for excess null values in sample with the corresponding ratio of nulls
-          present
+          for excess null values in sample with their corresponding ratio of nulls
+          present in the dataset
+     -- return_rejects: (bool, default=False) If True, returns dictionary of
+          of products rejected for excess nulls along with main output dataframe.
     """
     data = []
     rejected = {}
@@ -446,17 +449,21 @@ def ProductStatsDF(products, period_wks, end_date, MA_params=None,
 
     if print_rejects:
         if len(rejected) > 0:
-            print('Data for the following samples exceeded allowance for\n'
-                  'null values and were excluded from statistical aggregation:\n')
+            print('Data for the following product(s) exceed allowance for '
+                  'null values and are excluded\nfrom statistical aggregation '
+                  'and/or ranking:\n')
             for k, v in rejected.iteritems():
-                print('{} (ID:{}) -- Percent Null Values: {}%').format(
+                print('{} (ID:{}) -- Percent Null: {}%').format(
                     names_formatted[product_name_from_ID(k)],
                     k,
                     round(v * 100, 2)
                 )
             print '\n'
 
-    return product_stats_df
+    if return_rejects:
+        return product_stats_df, rejected
+    else:
+        return product_stats_df
 
 
 
@@ -719,14 +726,17 @@ GENERATE DATA FOR BAR GRAPHS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
-def HbarData(product_IDs, period_wks=10, end_date=None,
-               rank_on_sales=True, MA=5,
+def HbarData(product_IDs, end_date, period_wks=10,
+               rank_on_sales=True, MA=5, NaN_allowance=5, print_rejects=False,
                rank_by=['rate'], fixed_order=True):
-    """Return a dataframe configured for custom plotting in HbarRanked function"""
+    """Return a dataframe configured for custom plotting in HbarRanked function
+    Called within HBarRanked in graph_trends.py. See documentation there for
+    further details."""
 
     boxcar = [MA] if MA else None
     prod_stats = ProductStatsDF(product_IDs, period_wks, end_date,
-                MA_params=boxcar, compute_on_sales=rank_on_sales)
+                MA_params=boxcar, compute_on_sales=rank_on_sales,
+                NaN_allowance=NaN_allowance, print_rejects=print_rejects)
     if MA:
         base_name = prod_stats.name + ' -- {}-Week Moving Average'.format(MA)
     else:
@@ -799,31 +809,36 @@ GENERATE BEST-SELLER DATA
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
-def BestSellerData(products, end_date=None, period_wks=10, MA_param=5,
-            compute_on_sales=True, N_periods=10, freq='7D', rank_by='rate'):
-    """Return dataframes summarizing rankings for products over a series
-    of N-identical-length periods spaced at equal intervals.
+def BestSellerData(products, end_date, period_wks=10, MA_param=5, NaN_allowance=5,
+                   print_rejects=False, compute_on_sales=True, N_periods=10,
+                   freq='7D', rank_by='rate'):
+    """Return objects for graphing in graph_trends.PlotBestSellers():
+    1) BestSellers_df: dataframe summarizing rankings for products over a series of
+        N-identical-length periods spaced at equal intervals and
+    2) labeler: dictionary containing label names and positions for plot
 
-    OUTPUT: tuple (df_A, df_B)
-     -- df_A: DataFrame of product_IDs ranked for each period
-     -- df_B: DataFrame of rankings for each product indexed by date and column-
-         sorted left to right by cumulative highest ranks over all periods; This
-         df is suitable for slope-graphing.
 
     ARGUMENTS:
      -- products: (list of ints or strings) product names and/or IDs for
           statistical comparison
      -- end_date: (date string of form 'MM/DD/YYYY', default=None) end_date of most recent
-         ranking period; default uses most recent date in dataset.
+         ranking period
      -- period_wks: (int, default=10) length of sampling periods in weeks
      -- MA_param: (int or NoneType, default=5) rolling "boxcar" window, in weeks, by which to
           compute moving averages; None: ranks on non-smoothed (raw) trend data
+     -- NaN_allowance: (int or float from 0 to 100, default=5) max allowable
+          percentage of NaNs in product ts samples for statistical aggregation;
+
+     -- print_rejects: (bool, default=False) If True, print any products rejected
+          for excess null values in sample with their corresponding ratio of nulls
+          present in the dataset
      -- compute_on_sales: (bool, default=True) ranks on sales data; if False,
           ranks on units-sold data
      -- N_periods: (int, default=10) number of periods including latest for comparison
      -- freq: (str, default='7D') pandas date_range() argument; interval between
-         periods for comparison. Other possible values: 'W' (Sunday week), 'M' (month),
-         'Y', '2W', etc.
+         periods for comparison. Other possible values: 'W' (Sunday-ending week),
+         'M' (month), 'Y', '2W', etc. See documentation for Pandas base time-series
+         frequencies.
      -- rank_by: (string, default='rate') statistic by which to rank products.
           Values:
           * 'rate' = growth rate index for products with data
@@ -832,35 +847,55 @@ def BestSellerData(products, end_date=None, period_wks=10, MA_param=5,
           * 'sales' = cumulative sales over period
     """
 
-    # Generate list of end_dates for periods
-    if end_date:
-        end_dates = generate_dates(end_date, N_periods, freq)
-    else: # If not provided as argument, grab most recent date in data index
-        ### Bug?: if first product does not have latest date and dates do not overlap
-        imp = ImportSalesData(products[0])
-        imp.main()
-        seed_ts = imp.sales
-        dt_obj = seed_ts.index[-1]
-        end_date = datetime.strftime(dt_obj, '%m/%d/%Y')
-        end_dates = generate_dates(end_date, N_periods, freq)
+    # Generate list of end_dates for multiple ranking periods
+    end_dates = generate_dates(end_date, N_periods, freq)
 
     # Generate data consisting of product rankings over multiple periods
     data_A = OrderedDict()
-###    name_dict = {} # to map names to IDs for df labels
-    for i, end_d in enumerate(end_dates):
-        # compute stats on products
-        if MA_param:
-            psdf = ProductStatsDF(products, period_wks=period_wks, end_date=end_d,
-                    MA_params=[MA_param], normed=True, compute_on_sales=compute_on_sales
-                            )
-        else: # if no moving-avg sliding window provided, omit argument
-            psdf = ProductStatsDF(products, period_wks=period_wks, end_date=end_d,
-                    normed=True, compute_on_sales=compute_on_sales
-                            )
 
-        # Generate rankings and add to data dictionary (data_A) where keys =
-        # the end_dates of the comparison periods; values = the product IDs
-        # ordered by rank
+    excess_null_error_msg = ('\nDATA FOR SOME PRODUCTS CONTAINED TOO MANY NULLS TO RANK.\n\n'
+          '** For details, re-run function with print_rejects keyword argument'
+          ' set to True.\n\n** To ignore null values and proceed with rankings'
+          ' (substituting zero for\nnulls in computations),'
+          ' re-run function and set keyword argument NaN_allowance to 100.'
+          )
+
+    # Generate rankings and add to data dictionary (data_A) where keys = specified
+    # end_dates of the comparison periods; values = the product IDs ordered by rank
+    for i, end_d in enumerate(end_dates):
+        # On user command, executes diagnostic to reveal products w excess nulls
+        if print_rejects:
+            print('EXCESS NULL VALUES FROM PERIOD ENDING {}:\n').format(end_d)
+        else: pass
+
+        # Compute stats on products for one test period at a time
+        if MA_param:
+            psdf, rej = ProductStatsDF(products, period_wks=period_wks, end_date=end_d,
+                    MA_params=[MA_param], NaN_allowance=NaN_allowance,
+                    print_rejects=print_rejects, return_rejects=True,
+                    normed=True, compute_on_sales=compute_on_sales
+                         )
+            # If undiagnosed excess nulls, print error message and exit from function
+            if len(rej) > 0:
+                if not print_rejects:
+                    print(excess_null_error_msg)
+                    return None, None
+                else: pass
+            else: pass
+
+        else: # if no moving-avg window specified . . .
+            psdf, rej = ProductStatsDF(products, period_wks=period_wks, end_date=end_d,
+                    NaN_allowance=NaN_allowance, print_rejects=print_rejects,
+                    return_rejects=True, normed=True,
+                    compute_on_sales=compute_on_sales
+                            )
+            if len(rej) > 0:
+                if not print_rejects:
+                    print(excess_null_error_msg)
+                    return None, None
+                else: pass
+            else: pass
+
         ranked = RankProducts(psdf)
         if MA_param:
             ranked.main(smoothed=True, stat=rank_by)
@@ -885,32 +920,38 @@ def BestSellerData(products, end_date=None, period_wks=10, MA_param=5,
 
     # Construct output dataframes
     mask = lambda x: datetime.strptime(x, '%m/%d/%Y')
-    date_idx = [mask(dt) for dt in end_dates] # for DatetimeIndex of df_B
+    date_idx = [mask(dt) for dt in end_dates] # for DatetimeIndex of BestSellers_df
 
     title = best_seller_title(MA_param, compute_on_sales, N_periods,
                           period_wks, rank_by, freq)
 
-    df_A = pd.DataFrame(data_A, index=range(1, len(products)+1))
-    # index of df_A represents rank levels 1 to N
-    df_B = pd.DataFrame(data_B, index=date_idx)
+    try: # Exits function if data contains excess null values
+        df_A = pd.DataFrame(data_A, index=range(1, len(products)+1))
+    except ValueError:
+        if not print_rejects:
+            print(excess_null_error_msg)
+        return None, None
+    else:
+        # index of df_A represents rank levels 1 to N
+        BestSellers_df = pd.DataFrame(data_B, index=date_idx)
 
-    # Sort df_B columns by cumulative rankings
-    sum_o_ranks = df_B.sum()
-    foo = sum_o_ranks.sort_values(ascending=True)
-    sorted_by_best = list(foo.index)
-    df_B = df_B[sorted_by_best]
+        # Sort BestSellers_df columns by cumulative rankings
+        sum_o_ranks = BestSellers_df.sum()
+        foo = sum_o_ranks.sort_values(ascending=True)
+        sorted_by_best = list(foo.index)
+        BestSellers_df = BestSellers_df[sorted_by_best]
 
-    df_A.name = title
-    df_B.name = title
+        df_A.name = title
+        BestSellers_df.name = title
 
-    labels = [names_formatted[product_name_from_ID(prod_ID)] \
-              for prod_ID in df_A.iloc[:,-1]]
-    labeler = {}
-    for i, prod in enumerate(labels):
-        labeler[prod] = i + 1
+        labels = [names_formatted[product_name_from_ID(prod_ID)] \
+                  for prod_ID in df_A.iloc[:,-1]]
+        labeler = {}
+        for i, prod in enumerate(labels):
+            labeler[prod] = i + 1
 
 
-    return df_A, df_B, labeler
+        return BestSellers_df, labeler
 
 
 

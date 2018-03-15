@@ -74,6 +74,8 @@ def PlotRawData(product, plot_sales=True, fig_height=4):
     # Plot data
     plt.figure(figsize=(16, fig_height))
     plt.plot(ts)
+    plt.grid(linewidth=0.5, color='0.7', linestyle='--')
+    plt.title(ts.name)
     plt.show()
 
 
@@ -256,13 +258,14 @@ Horizontal Bar Chart of Products Ranked by Statistic(s)
 
 """
 
-def HbarRanked(products=None, period_wks=10, end_date=None,
+def HbarRanked(products, end_date, period_wks=10,
                rank_on_sales=True, MA_param=5, rank_by=['rate'], N_top=3,
-               fixed_order=True, fig_height=4, fig_margins=(0.2, 0.8, None),
+               fixed_order=True, NaN_allowance=5, print_rejects=False,
+               fig_height=4, fig_margins=(0.2, 0.8, None),
                x_buff=0.1, x_in_bar=6, manual_data_label_format=None,
                zero_gap=0.00, txt=None, write_path=None):
     """
-    ARGUMENTS:
+    DATA ARGUMENTS:
      -- products: (list of ints or strings) list of products IDs and/or names for ranking
      -- period_wks: (int, default=10) sample period for time series in weeks
      -- end_date: (date string: '07/15/2016', default=None) date string defining
@@ -283,6 +286,14 @@ def HbarRanked(products=None, period_wks=10, end_date=None,
      -- fixed_order: (bool, default=True) only rank products in the primary
           graph and maintain that rank-order in secondary graphs; if False,
           rank products in each graph
+     -- NaN_allowance: (int from 0 to 100, default=5) max allowable percent of
+          NaNs in product ts samples for statistical aggregation; products
+          exceeding allowance are discarded from rankings
+     -- print_rejects: (bool, default=False) If True, print report of products
+          rejected for excess null values in sample, with their corresponding
+          percentage of nulls present in sample
+
+   GRAPHIC ARGUMENTS
      -- fig_height: (int, default=4) y-dimension of plt.figure
      -- fig_margins: (tuple of floats, default=(0.2, 0.8, None)) variables to adjust figure margins
           via kwargs in plt.subplots_adjust, tuple: (bottom, top, wspace)
@@ -311,9 +322,10 @@ def HbarRanked(products=None, period_wks=10, end_date=None,
     """
 
     # Construct dataframe for graph(s)
-    df = HbarData(products, period_wks, end_date=end_date,
+    df = HbarData(products, end_date=end_date, period_wks=period_wks,
                rank_on_sales=rank_on_sales, MA=MA_param,
-               rank_by=rank_by, fixed_order=fixed_order)
+               rank_by=rank_by, fixed_order=fixed_order,
+               NaN_allowance=NaN_allowance, print_rejects=print_rejects)
 
     df_cols = df.columns
 
