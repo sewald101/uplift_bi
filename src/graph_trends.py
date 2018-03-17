@@ -45,7 +45,7 @@ from trend_analysis import CompTrendsDF # compares products by ts data
 from trend_analysis import RankProducts # returns ranked results
 from trend_analysis import HbarData
 
-from strain_dict import strain_dict, names_formatted, product_name_from_ID
+from id_dict import strain_dict, names_formatted, product_name_from_ID
 
 
 """Graphic design adapted from: http://www.randalolson.com/2014/06/28/how-to-make-beautiful-data-visualizations-in-python-with-matplotlib/

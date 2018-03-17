@@ -30,7 +30,182 @@ from collections import OrderedDict
 import matplotlib.pyplot as plt
 from sqlalchemy import create_engine
 
-from strain_dict import strain_dict, names_formatted, product_name_from_ID
+from id_dict import strain_dict, names_formatted, product_name_from_ID
+
+
+class ImportSalesData2(object):
+    """
+    Query weekly aggregated sales data from postgres and import to pandas data objects.
+    Initialize with either:
+
+    A. ONE product ID (int) or product name (string)
+    B. COMBINATION OF ONE product (ID or name) AND NO MORE THAN ONE retailer (ID or name)
+        OR city (str) OR zipcode (5-digit int)
+    C. OMIT product AND SPECIFY NO MORE THAN ONE retailer OR city OR zipcode
+
+    Then run main() method to populate attributes.
+
+    ATTRIBUTES:
+     -- product_df: pandas time series (DataFrame) with daily sales in dollars and units
+     -- sales: pandas time series (Series) of total daily sales
+     -- units_sold: pandas time series (Series) of total daily units sold
+     -- product_id (int or None)
+     -- product_name (string or None)
+     -- retailer_id (int or None)
+     -- retailer_name (string or None)
+     -- ts_start, ts_end (Datetime) start and end dates for time series, to assist
+           testing for continuity and synchronization among comparative products
+
+    NOTE: DataFrame and Series title strings with product name and ID may be accessed
+        via DataFrame.name and Series.name attributes
+    """
+
+    def __init__(self, product=None, retailer=None, city=None, zipcode=None):
+        self.product = product
+        self.retailer = retailer
+        self.city = city
+        self.zipcode = zipcode
+        self._connection_str = 'postgresql:///uplift'
+
+        # populated via main() method
+        self.product_id = None
+        self.product_name = None
+        self.retailer_id = None
+        self.retailer_name = None
+        self._query = None
+        self._conn = None
+        self.product_df = None
+        self.sales = None
+        self.units_sold = None
+        self.ts_start, self.ts_end = None, None
+
+        # elements for SQL query and for pd.DataFrame and pd.Series names
+        self.toggles = {'filter_1': '', 'value_1': '',
+                        'filter_2': '', 'value_2': '',
+                        'toggle': '--'}
+        self.city_formatted = (
+            "\'" + self.city.upper() + "\'" if self.city is not None else None
+            )
+        self.df_name = None
+
+
+    def main(self):
+        self._retrieve_IDs()
+        self._set_query_toggles()
+        self._compose_df_name()
+        self._query_sales()
+        self._connect_to_postgres()
+        self._SQL2pandasdf()
+
+    def _retrieve_IDs(self):
+        if self.product is not None:
+            if type(self.product) == str:
+                key = self.product.lower()
+                self.product_id = strain_dict[key]
+                self.product_name = names_formatted[self.product.lower()]
+            else:
+                self.product_id = self.product
+                self.product_name = names_formatted[product_name_from_ID(self.product)]
+
+        if self.retailer is not None:
+            if type(self.retailer) == str:
+                self.retailer_name = self.retailer.upper()
+                key = self.retailer_name
+                self.retailer_id = locations_dict[key]
+            else:
+                self.retailer_name = locations_name_from_ID(self.retailer)
+                self.retailer_id = self.retailer
+
+    def _set_query_toggles(self):
+        """Convert initialization parameters into query terms placed in a dictionary"""
+        arg_list = [self.product_id, self.retailer_id, self.city_formatted, self.zipcode]
+        fields = ['strain_id', 'retailer_id', 'city', 'zip']
+
+        mask = lambda x: x is not None
+        bool_list = map(mask, arg_list)
+        idx_1 = bool_list.index(True)
+
+        if bool_list.count(True) == 1: # if only one filter specified...
+            self.toggles['filter_1'] = fields[idx_1]
+            self.toggles['value_1'] = arg_list[idx_1]
+        else:
+            self.toggles['filter_1'] = fields[0] # Toggle on product filter
+            self.toggles['value_1'] = arg_list[0]
+            idx_2 = bool_list[1:].index(True) + 1 # Grab index of second filter
+            self.toggles['toggle'] = ''
+            self.toggles['filter_2'] = fields[idx_2]
+            self.toggles['value_2'] = arg_list[idx_2]
+
+    def _compose_df_name(self):
+        if self.toggles['filter_2'] == '': # If only ONE filter specified at initialization
+            if self.toggles['filter_1'] == 'strain_id':
+                self.df_name = '{} (ID: {}) Statewide'.format(self.product_name,
+                                                              self.product_id)
+            elif self.toggles['filter_1'] == 'retailer_id':
+                self.df_name = 'Retailer: {} (ID: {})'.format(self.retailer_name,
+                                                              self.retailer_id)
+            elif self.toggles['filter_1'] == 'city':
+                self.df_name = 'City: {}'.format(self.city.upper())
+            else:
+                self.df_name = 'Zipcode: {}'.format(self.zipcode)
+
+        else: # If a product and one other filter are specified
+            A = '{} (ID: {})'.format(self.product_name, self.product_id)
+            if self.toggles['filter_2'] == 'retailer_id':
+                B = ', Retailer: {} (ID: {})'.format(self.retailer_name, self.retailer_id)
+            elif self.toggles['filter_2'] == 'city':
+                B = ', City: {}'.format(self.city.upper())
+            else:
+                B = ', Zipcode: {}'.format(self.zipcode)
+            self.df_name = A + B
+
+    def _query_sales(self):
+        self._query = ("""
+        SELECT CAST(DATE_TRUNC('day', week_beginning) AS DATE) as week_beg
+         , ROUND(SUM(retail_price)) as ttl_sales
+         , ROUND(SUM(retail_units)) as ttl_units_sold
+        FROM weekly_sales
+        WHERE {0:} = {1:}
+        {2:}AND {3:} = {4:}
+        GROUP BY week_beg
+        ORDER BY week_beg;
+        """).format(self.toggles['filter_1'],
+                    self.toggles['value_1'],
+                    self.toggles['toggle'],
+                    self.toggles['filter_2'],
+                    self.toggles['value_2']
+                    )
+
+    def _connect_to_postgres(self):
+        self._conn = create_engine(self._connection_str)
+
+    def _SQL2pandasdf(self):
+        stage_1 = pd.read_sql_query(self._query, self._conn)
+        stage_2 = pd.DataFrame(stage_1[['ttl_sales', 'ttl_units_sold']])
+        stage_2.index = pd.DatetimeIndex(stage_1['week_beg'])
+
+        try:
+            # Construct continuous time series even if data is discontinuous
+            self.ts_start, self.ts_end = stage_2.index[0], stage_2.index[-1]
+        except IndexError:
+            print "\nERROR: NO SALES DATA FOR THE FILTERS SPECIFIED\n"
+            return None
+        else:
+            main_idx = pd.date_range(start=self.ts_start, end=self.ts_end, freq='W-MON')
+            self.product_df = pd.DataFrame(index=main_idx)
+
+            self.product_df['ttl_sales'] = stage_2['ttl_sales']
+            self.product_df['ttl_units_sold'] = stage_2['ttl_units_sold']
+
+            self.product_df.name = self.df_name
+
+            self.sales = self.product_df['ttl_sales']
+            self.sales.name = self.df_name + ' -- Weekly Sales'
+
+            self.units_sold = self.product_df['ttl_units_sold']
+            self.units_sold.name = self.df_name + ' -- Weekly Units Sold'
+
+
 
 
 class ImportSalesData(object):
