@@ -45,7 +45,8 @@ from trend_analysis import CompTrendsDF # compares products by ts data
 from trend_analysis import RankProducts # returns ranked results
 from trend_analysis import HbarData
 
-from id_dict import strain_dict, names_formatted, product_name_from_ID
+from id_dict import (strain_dict, names_formatted, locations_dict,
+                     product_name_from_ID, locations_name_from_ID)
 
 
 """Graphic design adapted from: http://www.randalolson.com/2014/06/28/how-to-make-beautiful-data-visualizations-in-python-with-matplotlib/
@@ -58,13 +59,15 @@ Line Plot of Raw Product Sales Data
 
 """
 
-def PlotRawData(product, plot_sales=True, fig_height=4):
+def PlotRawData(product=None, location=None, city=None, zipcode=None,
+    plot_sales=True, upsample=True, fig_height=4):
     """
     Plot raw sales or units sold data over its complete time series.
     """
 
     # Get data
-    stage_1 = ImportSalesData(product)
+    stage_1 = ImportSalesData(product=product, location=location, city=city,
+        zipcode=zipcode, upsample=upsample)
     stage_1.main()
     if plot_sales:
         ts = stage_1.sales

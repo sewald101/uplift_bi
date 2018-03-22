@@ -30,18 +30,23 @@ from collections import OrderedDict
 import matplotlib.pyplot as plt
 from sqlalchemy import create_engine
 
-from id_dict import strain_dict, names_formatted, product_name_from_ID
+from id_dict import (strain_dict, names_formatted, locations_dict,
+                     product_name_from_ID, locations_name_from_ID)
 
 
-class ImportSalesData2(object):
+class ImportSalesData(object):
     """
     Query weekly aggregated sales data from postgres and import to pandas data objects.
-    Initialize with either:
+    Initialize with any one of the following filter options:
 
     A. ONE product ID (int) or product name (string)
-    B. COMBINATION OF ONE product (ID or name) AND NO MORE THAN ONE retailer (ID or name)
+    B. COMBINATION OF ONE product (ID or name) AND NO MORE THAN ONE location (ID or name)
         OR city (str) OR zipcode (5-digit int)
-    C. OMIT product AND SPECIFY NO MORE THAN ONE retailer OR city OR zipcode
+    C. OMIT product AND SPECIFY NO MORE THAN ONE location OR city OR zipcode
+    D. DEFAULT (all filters = None), imports sales data aggregated statewide for all products
+
+    To retain data at original weekly frequency (versus daily), initialize with
+       upsample=False
 
     Then run main() method to populate attributes.
 
@@ -51,8 +56,8 @@ class ImportSalesData2(object):
      -- units_sold: pandas time series (Series) of total daily units sold
      -- product_id (int or None)
      -- product_name (string or None)
-     -- retailer_id (int or None)
-     -- retailer_name (string or None)
+     -- location_id (int or None)
+     -- location_name (string or None)
      -- ts_start, ts_end (Datetime) start and end dates for time series, to assist
            testing for continuity and synchronization among comparative products
 
@@ -60,18 +65,19 @@ class ImportSalesData2(object):
         via DataFrame.name and Series.name attributes
     """
 
-    def __init__(self, product=None, retailer=None, city=None, zipcode=None):
+    def __init__(self, product=None, location=None, city=None, zipcode=None, upsample=True):
         self.product = product
-        self.retailer = retailer
+        self.location = location
         self.city = city
         self.zipcode = zipcode
+        self.upsample = upsample
         self._connection_str = 'postgresql:///uplift'
 
         # populated via main() method
         self.product_id = None
         self.product_name = None
-        self.retailer_id = None
-        self.retailer_name = None
+        self.location_id = None
+        self.location_name = None
         self._query = None
         self._conn = None
         self.product_df = None
@@ -80,9 +86,9 @@ class ImportSalesData2(object):
         self.ts_start, self.ts_end = None, None
 
         # elements for SQL query and for pd.DataFrame and pd.Series names
-        self.toggles = {'filter_1': '', 'value_1': '',
+        self.toggles = {'toggle_1': '--', 'filter_1': '', 'value_1': '',
                         'filter_2': '', 'value_2': '',
-                        'toggle': '--'}
+                        'toggle_2': '--'}
         self.city_formatted = (
             "\'" + self.city.upper() + "\'" if self.city is not None else None
             )
@@ -107,57 +113,68 @@ class ImportSalesData2(object):
                 self.product_id = self.product
                 self.product_name = names_formatted[product_name_from_ID(self.product)]
 
-        if self.retailer is not None:
-            if type(self.retailer) == str:
-                self.retailer_name = self.retailer.upper()
-                key = self.retailer_name
-                self.retailer_id = locations_dict[key]
+        if self.location is not None:
+            if type(self.location) == str:
+                self.location_name = self.location.upper()
+                key = self.location_name
+                self.location_id = locations_dict[key]
             else:
-                self.retailer_name = locations_name_from_ID(self.retailer)
-                self.retailer_id = self.retailer
+                self.location_name = locations_name_from_ID(self.location)
+                self.location_id = self.location
 
     def _set_query_toggles(self):
         """Convert initialization parameters into query terms placed in a dictionary"""
-        arg_list = [self.product_id, self.retailer_id, self.city_formatted, self.zipcode]
-        fields = ['strain_id', 'retailer_id', 'city', 'zip']
+        arg_list = [self.product_id, self.location_id, self.city_formatted, self.zipcode]
+        fields = ['strain_id', 'location_id', 'city', 'zip']
 
         mask = lambda x: x is not None
         bool_list = map(mask, arg_list)
-        idx_1 = bool_list.index(True)
+        if bool_list.count(True) != 0:
+            idx_1 = bool_list.index(True)
 
         if bool_list.count(True) == 1: # if only one filter specified...
+            self.toggles['toggle_1'] = ''
             self.toggles['filter_1'] = fields[idx_1]
             self.toggles['value_1'] = arg_list[idx_1]
-        else:
+
+        if bool_list.count(True) == 2: # if two filters specified...
+            self.toggles['toggle_1'] = ''
             self.toggles['filter_1'] = fields[0] # Toggle on product filter
             self.toggles['value_1'] = arg_list[0]
             idx_2 = bool_list[1:].index(True) + 1 # Grab index of second filter
-            self.toggles['toggle'] = ''
+            self.toggles['toggle_2'] = ''
             self.toggles['filter_2'] = fields[idx_2]
             self.toggles['value_2'] = arg_list[idx_2]
 
     def _compose_df_name(self):
-        if self.toggles['filter_2'] == '': # If only ONE filter specified at initialization
+        # Statewide data for all products
+        if self.toggles['toggle_1'] == '--':
+            self.df_name = 'All Cannabis Products, Statewide'
+
+        # If only ONE product or geographic filter is specified
+        if self.toggles['toggle_1'] == '' and self.toggles['toggle_2'] == '--':
             if self.toggles['filter_1'] == 'strain_id':
                 self.df_name = '{} (ID: {}) Statewide'.format(self.product_name,
                                                               self.product_id)
-            elif self.toggles['filter_1'] == 'retailer_id':
-                self.df_name = 'Retailer: {} (ID: {})'.format(self.retailer_name,
-                                                              self.retailer_id)
+            elif self.toggles['filter_1'] == 'location_id':
+                self.df_name = 'Location: {} (ID: {})'.format(self.location_name,
+                                                              self.location_id)
             elif self.toggles['filter_1'] == 'city':
                 self.df_name = 'City: {}'.format(self.city.upper())
             else:
                 self.df_name = 'Zipcode: {}'.format(self.zipcode)
 
-        else: # If a product and one other filter are specified
+        # If one product and one geographic filter are specified
+        if self.toggles['toggle_1'] == '' and self.toggles['toggle_2'] == '':
             A = '{} (ID: {})'.format(self.product_name, self.product_id)
-            if self.toggles['filter_2'] == 'retailer_id':
-                B = ', Retailer: {} (ID: {})'.format(self.retailer_name, self.retailer_id)
+            if self.toggles['filter_2'] == 'location_id':
+                B = ', Location: {} (ID: {})'.format(self.location_name, self.location_id)
             elif self.toggles['filter_2'] == 'city':
                 B = ', City: {}'.format(self.city.upper())
             else:
                 B = ', Zipcode: {}'.format(self.zipcode)
             self.df_name = A + B
+
 
     def _query_sales(self):
         self._query = ("""
@@ -165,13 +182,14 @@ class ImportSalesData2(object):
          , ROUND(SUM(retail_price)) as ttl_sales
          , ROUND(SUM(retail_units)) as ttl_units_sold
         FROM weekly_sales
-        WHERE {0:} = {1:}
-        {2:}AND {3:} = {4:}
+        {0:}WHERE {1:} = {2:}
+        {3:}AND {4:} = {5:}
         GROUP BY week_beg
         ORDER BY week_beg;
-        """).format(self.toggles['filter_1'],
+        """).format(self.toggles['toggle_1'],
+                    self.toggles['filter_1'],
                     self.toggles['value_1'],
-                    self.toggles['toggle'],
+                    self.toggles['toggle_2'],
                     self.toggles['filter_2'],
                     self.toggles['value_2']
                     )
@@ -191,104 +209,44 @@ class ImportSalesData2(object):
             print "\nERROR: NO SALES DATA FOR THE FILTERS SPECIFIED\n"
             return None
         else:
-            main_idx = pd.date_range(start=self.ts_start, end=self.ts_end, freq='W-MON')
-            self.product_df = pd.DataFrame(index=main_idx)
+            if self.upsample: # Construct daily DF from weekly aggregated data
+                main_idx = pd.date_range(start=self.ts_start, end=self.ts_end, freq='W-MON')
+                stage_3 = pd.DataFrame(index=main_idx)
 
-            self.product_df['ttl_sales'] = stage_2['ttl_sales']
-            self.product_df['ttl_units_sold'] = stage_2['ttl_units_sold']
+                stage_3['ttl_sales'] = stage_2['ttl_sales']
+                stage_3['ttl_units_sold'] = stage_2['ttl_units_sold']
 
-            self.product_df.name = self.df_name
+                stage_4 = stage_3 / 7 # convert weekly values to daily values
+                stage_5 = stage_4.resample('D').asfreq() # upsample from weeks to days
+                extended_idx = pd.DatetimeIndex(
+                    start=stage_5.index[0], end=stage_5.index[-1] + 6, freq='D'
+                    ) # extend upsampled index to include days from last week of data
+                self.product_df = stage_5.reindex(extended_idx).ffill(limit=6)
+                # forward-fill available daily values, retaining NaNs over those weeks
+                # where NaNs appear in original weekly data
 
-            self.sales = self.product_df['ttl_sales']
-            self.sales.name = self.df_name + ' -- Weekly Sales'
+                self.product_df.name = self.df_name
 
-            self.units_sold = self.product_df['ttl_units_sold']
-            self.units_sold.name = self.df_name + ' -- Weekly Units Sold'
+                self.sales = self.product_df['ttl_sales']
+                self.sales.name = self.df_name + ' -- Daily Sales'
 
+                self.units_sold = self.product_df['ttl_units_sold']
+                self.units_sold.name = self.df_name + ' -- Daily Units Sold'
 
+            else: # preserve data in original weekly aggregated form
+                main_idx = pd.date_range(start=self.ts_start, end=self.ts_end, freq='W-MON')
+                self.product_df = pd.DataFrame(index=main_idx)
 
+                self.product_df['ttl_sales'] = stage_2['ttl_sales']
+                self.product_df['ttl_units_sold'] = stage_2['ttl_units_sold']
 
-class ImportSalesData(object):
-    """
-    Query sales data from postgres and import to pandas data objects. Initialize
-    with product ID (int) or name (string) then run main() method to populate attributes
+                self.product_df.name = self.df_name
 
-    ATTRIBUTES:
-     -- product_df: pandas time series (DataFrame) with daily sales in dollars and units
-     -- sales: pandas time series (Series) of total daily sales
-     -- units_sold: pandas time series (Series) of total daily units sold
-     -- product_id (int)
-     -- product_name (string)
-     -- ts_start, ts_end (Datetime) start and end dates for time series, to assist
-           testing for continuity and synchronization among comparative products
+                self.sales = self.product_df['ttl_sales']
+                self.sales.name = self.df_name + ' -- Weekly Sales'
 
-    NOTE: DataFrame and Series title strings with product name and ID may be accessed
-        via DataFrame.name and Series.name attributes
-    """
-
-    def __init__(self, product):
-        self.product = product
-        self.product_id = None
-        self.product_name = None
-        self._query = None
-        self._connection_str = 'postgresql:///uplift'
-        self._conn = None
-        self.product_df = None
-        self.sales = None
-        self.units_sold = None
-        self.ts_start, self.ts_end = None, None
-
-    def main(self):
-        self._retrieve_ID()
-        self._query_product_sales()
-        self._connect_to_postgres()
-        self._SQL2pandasdf()
-
-    def _retrieve_ID(self):
-        if type(self.product) == str:
-            key = self.product.lower()
-            self.product_id = strain_dict[key]
-        else:
-            self.product_id = self.product
-
-    def _query_product_sales(self):
-        self._query = ("""
-        SELECT CAST(DATE_TRUNC('day', date_of_sale) AS DATE) as date
-         , strain_name as product_name
-         , generic_strain_id as product_id
-         , ROUND(SUM(retail_price)) as ttl_sales
-         , ROUND(SUM(retail_units)) as ttl_units_sold
-        FROM daily_sales
-        WHERE generic_strain_id = {}
-        GROUP BY date, strain_name, generic_strain_id
-        ORDER BY date;
-        """).format(self.product_id)
-
-    def _connect_to_postgres(self):
-        self._conn = create_engine(self._connection_str)
-
-    def _SQL2pandasdf(self):
-        stage_1 = pd.read_sql_query(self._query, self._conn)
-        stage_2 = pd.DataFrame(stage_1[['ttl_sales', 'ttl_units_sold']])
-        stage_2.index = pd.DatetimeIndex(stage_1['date'])
-
-        # Construct continuous time series even if data is discontinuous
-        self.ts_start, self.ts_end = stage_2.index[0], stage_2.index[-1]
-        main_idx = pd.date_range(start=self.ts_start, end=self.ts_end)
-        self.product_df = pd.DataFrame(index=main_idx)
-
-        self.product_df['ttl_sales'] = stage_2['ttl_sales']
-        self.product_df['ttl_units_sold'] = stage_2['ttl_units_sold']
-        self.product_name = names_formatted[product_name_from_ID(self.product_id)]
-        df_name = '{} (ID: {})'.format(self.product_name, self.product_id)
-        self.product_df.name = df_name
-
-        self.sales = self.product_df['ttl_sales']
-        self.sales.name = df_name + ' -- Daily Sales'
-
-        self.units_sold = self.product_df['ttl_units_sold']
-        self.units_sold.name = df_name + ' -- Daily Units Sold'
-
+                self.units_sold = self.product_df['ttl_units_sold']
+                self.units_sold.name = self.df_name + ' -- Weekly Units Sold'
 
 
 class ProductTrendsDF(object):
@@ -355,8 +313,10 @@ class ProductTrendsDF(object):
         self.normed = normed
         self.baseline = baseline
         self.NaN_filler = NaN_filler
-        self.product_name = self.ts.name.split('(')[0].strip()
-        self.product_ID = int(self.ts.name.split(')')[0].split(' ')[-1])
+        self.product_name = None
+        self.product_ID = None
+        self.place_name = None
+        self.place_ID = None
         self.sales_col_name = self.ts.name.split(' -- Daily ')[-1]
         self.ts_sample = None
         self.trendsDF = None
@@ -370,8 +330,7 @@ class ProductTrendsDF(object):
         if self.NaN_filler is not None:
             if self.MA_params:
                 self._compute_rolling_averages()
-                # if self.exp_smooth_params:
-                #     self._compute_exp_smoothed_trends()
+
         self.aggregate_stats()
 
 
@@ -445,6 +404,8 @@ class ProductTrendsDF(object):
         (OrderedDict)"""
         self.trend_stats['product_name'] = self.product_name
         self.trend_stats['product_id'] = self.product_ID
+        self.trend_stats['place_name'] = self.place_name
+        self.trend_stats['place_id'] = self.place_ID
         self.trend_stats['avg weekly ' + self.sales_col_name.lower()] = \
             round(self.trendsDF.iloc[:,0].sum() / self.period_wks, 0)
 
@@ -488,18 +449,38 @@ class ProductTrendsDF(object):
 
     def _trendsDF_name(self):
         """Construct string for trendsDF pandas DataFrame name attribute"""
+        A = ''
+        B = 'Statewide '
+
+        first_parse = self.ts.name.split(' -- Daily ')
+        if 'ID' in first_parse[0]:
+            self.product_name = first_parse[0].split(' (ID: ')[0]
+            self.product_ID = int(first_parse[0].split(' (ID: ')[1].split(')')[0])
+            A = '{} (ID: {}), '.format(self.product_name, self.product_ID)
+
+        if 'Location' in first_parse[0]:
+            self.place_name = first_parse[0].split(': ')[-2][:-4]
+            self.place_ID = int(first_parse[0].split('(ID: ')[-1][:-1])
+            B = 'Retailer: {} (ID: {}), '.format(self.place_name, self.place_ID)
+
+        if 'City' in first_parse[0]:
+            self.place_name = first_parse[0].split('City: ')[-1]
+            B = 'City: {}, '.format(self.place_name)
+
+        if 'Zipcode' in first_parse[0]:
+            self.place_name = first_parse[0].split('Zipcode: ')[-1]
+            B = 'Zipcode: {}, '.format(self.place_name)
+
         if not self.end_date:
             ending = self.ts.index[-1].strftime('%m/%d/%Y')
         else:
             ending = self.end_date
 
-        DF_name = ('{} (ID: {}) Trends in {} over {} Weeks Ending {}').format(
-            self.product_name,
-            self.product_ID,
-            self.sales_col_name,
-            self.period_wks,
-            ending
-            )
+        DF_name = (A + B + 'Trends in {} over {} Weeks Ending {}').format(
+                                                        self.sales_col_name,
+                                                        self.period_wks,
+                                                        ending
+                                                        )
         return DF_name
 
 
@@ -550,26 +531,32 @@ class ProductTrendsDF(object):
 
 
 
-def ProductStatsDF(products, period_wks, end_date, MA_params=None,
-                  exp_smooth_params=None, normed=True, baseline='t_zero',
-                  compute_on_sales=True, NaN_allowance=5, print_rejects=False,
-                  return_rejects=False):
+def ProductStatsDF(period_wks, end_date, products=[None], locations=[None],
+                   cities=[None], zipcodes=[None], MA_params=None, normed=True,
+                   baseline='t_zero', compute_on_sales=True, NaN_allowance=5,
+                   print_rejects=False, return_rejects=False):
     """Construct DataFrame showing comparative sales stats among multiple products.
     See output DataFrame.name attribute for title.
 
     ARGUMENTS:
-     -- products: (list of ints or strings) list of product names and/or IDs for
-          statistical comparison
      -- period_wks: (int) sampling period in weeks
      -- end_date: (date string of form: '07/15/2016') date string defining
           end of sampling period for comparison
 
+    PROVIDE ONE OF THE BELOW OR A COMBINATION OF TWO ARGUMENTS with ONE OF THE
+    TWO CONTAINING ONLY ONE VALUE IN ITS LIST
+     -- products: (list of ints or strings) list of product names and/or IDs for
+          filtering or statistical comparison
+     -- locations: (list of ints or strings) list of retail store names and/or
+          IDs for filtering or statistical comparison
+     -- cities: (list of strings) list of cities for filtering or statistical
+          comparison
+     -- zipcodes: (list of 5-digit zipcodes as ints) list of zipcodes for filtering
+          or statistical comparison
+
      OPTIONAL:
      -- MA_params: (list of ints, default=None) one or more rolling "boxcar"
           windows, in weeks, by which to compute moving averages
-     -- exp_smooth_params: (list of floats, default=None) one or more alpha
-          smoothing factors (0 < alpha < 1) by which to generate distinct columns
-          of exponentially smoothed data
      -- normed: (bool, default=True) add a column for each rolling average or expon.
           smoothed column that computes on data that has been rescaled (-1, 1)
           and then shifted to baseline.
@@ -589,12 +576,34 @@ def ProductStatsDF(products, period_wks, end_date, MA_params=None,
      -- return_rejects: (bool, default=False) If True, returns dictionary of
           of products rejected for excess nulls along with main output dataframe.
     """
+
     data = []
     rejected = {}
     counter = 0
     df_name = None
-    for product in products:
-        raw_data = ImportSalesData(product)
+
+    product_place_args = [products, locations, cities, zipcodes]
+    import_type, var_idx = select_import_params(product_place_args)
+
+    if import_type == 'E':
+        print (
+        '\nERROR: CONFLICTING VALUES ENTERED AMONG PRODUCTS, LOCATIONS, CITIES, '
+        'AND/OR ZIPCODES ARGUMENTS.\n'
+        'ONLY ONE OF THOSE FOUR LIST-ARGUMENTS MANY CONTAIN MORE THAN ONE VALUE.\n'
+             )
+        return
+
+    if import_type == 'A':
+        stats, NaN_ratio, name = import_ala_params(period_wks, end_date,
+             MA_params=MA_params, normed=normed, baseline=baseline,
+             compute_on_sales=compute_on_sales, NaN_allowance=NaN_allowance)
+
+        data.append(trends_data.trend_stats)
+        df_name = name.split(') ')[1]
+
+    if import_type == 'B':
+        raw_data = ImportSalesData(product=products[0], location=locations[0],
+                                   city=cities[0], zipcode=zipcodes[0])
         raw_data.main()
         if compute_on_sales:
             ts = raw_data.sales
@@ -602,22 +611,127 @@ def ProductStatsDF(products, period_wks, end_date, MA_params=None,
             ts = raw_data.units_sold
 
         trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
-                                     exp_smooth_params, normed, baseline,
-                                     NaN_filler=0.0)
+                                     normed, baseline, NaN_filler=0.0)
         trends_data.main()
 
         # If null vals in sample exceed allowance threshold, dump product into
         # rejected dict and exclude from output DF
         if trends_data.NaNs_ratio > NaN_allowance / 100.:
             rejected[trends_data.product_ID] = trends_data.NaNs_ratio
-            continue
+
 
         else:
             data.append(trends_data.trend_stats)
 
         if counter < 1: # first loop, extract df name from ProductTrendsDF
             df_name = trends_data.trendsDF.name.split(') ')[1]
-        counter += 1
+
+    if import_type == 'C':
+        for prod in products:
+            raw_data = ImportSalesData(product=prod, location=locations[0],
+                                       city=cities[0], zipcode=zipcodes[0])
+            raw_data.main()
+            if compute_on_sales:
+                ts = raw_data.sales
+            else:
+                ts = raw_data.units_sold
+
+            trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
+                                         normed, baseline, NaN_filler=0.0)
+            trends_data.main()
+
+            # If null vals in sample exceed allowance threshold, dump product into
+            # rejected dict and exclude from output DF
+            if trends_data.NaNs_ratio > NaN_allowance / 100.:
+                rejected[trends_data.product_ID] = trends_data.NaNs_ratio
+                continue
+
+            else:
+                data.append(trends_data.trend_stats)
+
+            if counter < 1: # first loop, extract df name from ProductTrendsDF
+                df_name = trends_data.trendsDF.name.split(') ')[1]
+            counter += 1
+
+    if import_type == 'D':
+        if var_idx == 1:
+            for loc in locations:
+                raw_data = ImportSalesData(product=products[0], location=loc)
+                raw_data.main()
+                if compute_on_sales:
+                    ts = raw_data.sales
+                else:
+                    ts = raw_data.units_sold
+
+                trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
+                                             normed, baseline, NaN_filler=0.0)
+                trends_data.main()
+
+                # If null vals in sample exceed allowance threshold, dump product into
+                # rejected dict and exclude from output DF
+                if trends_data.NaNs_ratio > NaN_allowance / 100.:
+                    rejected[trends_data.product_ID] = trends_data.NaNs_ratio
+                    continue
+
+                else:
+                    data.append(trends_data.trend_stats)
+
+                if counter < 1: # first loop, extract df name from ProductTrendsDF
+                    df_name = trends_data.trendsDF.name.split(') ')[1]
+                counter += 1
+
+        if var_idx == 2:
+            for city in cities:
+                raw_data = ImportSalesData(product=products[0], city=city)
+                raw_data.main()
+                if compute_on_sales:
+                    ts = raw_data.sales
+                else:
+                    ts = raw_data.units_sold
+
+                trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
+                                             normed, baseline, NaN_filler=0.0)
+                trends_data.main()
+
+                # If null vals in sample exceed allowance threshold, dump product into
+                # rejected dict and exclude from output DF
+                if trends_data.NaNs_ratio > NaN_allowance / 100.:
+                    rejected[trends_data.product_ID] = trends_data.NaNs_ratio
+                    continue
+
+                else:
+                    data.append(trends_data.trend_stats)
+
+                if counter < 1: # first loop, extract df name from ProductTrendsDF
+                    df_name = trends_data.trendsDF.name.split(') ')[1]
+                counter += 1
+
+        if var_idx == 3:
+            for zip in zipcodes:
+                raw_data = ImportSalesData(product=products[0], zipcode=zip)
+                raw_data.main()
+                if compute_on_sales:
+                    ts = raw_data.sales
+                else:
+                    ts = raw_data.units_sold
+
+                trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
+                                             normed, baseline, NaN_filler=0.0)
+                trends_data.main()
+
+                # If null vals in sample exceed allowance threshold, dump product into
+                # rejected dict and exclude from output DF
+                if trends_data.NaNs_ratio > NaN_allowance / 100.:
+                    rejected[trends_data.product_ID] = trends_data.NaNs_ratio
+                    continue
+
+                else:
+                    data.append(trends_data.trend_stats)
+
+                if counter < 1: # first loop, extract df name from ProductTrendsDF
+                    df_name = trends_data.trendsDF.name.split(') ')[1]
+                counter += 1
+
 
     product_stats_df = pd.DataFrame(data, columns=data[0].keys())
     product_stats_df.name = df_name
@@ -643,14 +757,14 @@ def ProductStatsDF(products, period_wks, end_date, MA_params=None,
 
 
 def CompTrendsDF(products, period_wks, end_date, MA_param=None,
-                  exp_smooth_param=None, shifted=False, normed=False,
-                  baseline='t_zero', compute_on_sales=True, NaN_filler=0.0):
+                 shifted=False, normed=False,
+                 baseline='t_zero', compute_on_sales=True, NaN_filler=0.0):
     """Construct DataFrame with time series across multiple products. Default
     arguments return a DataFrame with time series of raw sales data, NaNs filled
-    with 0.0. Otherwise, assign value to either MA_param= or exp_smooth_param= (NOT BOTH).
+    with 0.0. Otherwise, assign value to MA_param=.
     Optionally may assign True to either shifted= or normed= arguments (NOT BOTH).
-    To preserve discontinuities in data (i.e., NaNs) set NaN_filler to None or a tag
-    value such as 0.0001
+    To preserve discontinuities in data (i.e., NaNs) set NaN_filler to None or
+    to a tag value close to zero such as 0.0001
 
     ARGUMENTS:
      -- products: (list of ints or strings) product names and/or IDs for
@@ -1183,9 +1297,77 @@ def best_seller_title(MA_param, compute_on_sales, N_periods, period_wks,
 
 """
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-A LA CARTE FUNCTIONS
+SUPPORTING AND STAND-ALONE FUNCTIONS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
+
+def select_import_params(arg_list):
+    """
+    Return tuple (str, int or None) containing ImportSalesData initialization configs with
+    iterable 'variable' and index of 'filter' as derived from user-inputs in parent function.
+    Return error trigger if user arguments contain conflicting values.
+    Types:
+
+    A = Import sales data statewide for all products (no variable or filter)
+    B = Import sales data for a single product OR a single location OR a single product
+          in a single location
+    C = Import sales data for multiple products (variable), optionally within a single
+          location (filter)
+    D = Import sales data for multiple locations (variable), optionally filtered by a
+          single product (filter)
+    E = ERROR_1: Conflicing values contained in arguments
+    """
+
+    # find variable; the product or geo-spec for comparison via iteration
+    mask_1 = lambda x: len(x) > 1
+    find_var = map(mask_1, arg_list)
+
+    # find args with user-specified values
+    mask_2 = lambda x: x[0] is not None
+    find_args = map(mask_2, arg_list)
+
+
+    if find_var.count(True) == 0: # If no arguments contain more than one value...
+        if find_args.count(True) == 0: # user did not specify variable or filter
+            return 'A', None
+        elif find_args.count(True) > 2: # user entered too many arguments
+            return 'E', None
+        else: # User specified a single value in a single argument, a product or a place
+            return 'B', None
+
+    elif find_var.count(True) > 1: # if user arguments exceed the limit of one variable
+        return 'E', None
+
+    elif find_var.count(True) == 1: # If one argument contains multiple values (the 'variable')
+        if find_var.index(True) == 0: # Compare / iterate on product
+            return 'C', None
+        else: # Compare / iterate on place
+            return 'D', find_var.index(True)
+
+
+def import_ala_params(period_wks, end_date, product=None, location=None, city=None, zipcode=None,
+                      MA_params=None, normed=True, baseline='t_zero', compute_on_sales=True,
+                      NaN_allowance=5):
+    """
+    Import sales data per user params in parent function and return the following objects (tup):
+    -- ProductTrends.trend_stats
+    -- ProductTrends.NaNs_ratio
+    -- ProductTrends.trendsDF.name
+    """
+    raw_data = ImportSalesData(product, location, city, zipcode)
+    raw_data.main()
+    if compute_on_sales:
+        ts = raw_data.sales
+    else:
+        ts = raw_data.units_sold
+
+    trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params, normed, baseline,
+                                  NaN_filler=0.0)
+    trends_data.main()
+
+    return (trends_data.trend_stats,
+            trends_data.NaNs_ratio,
+            trends_data.trendsDF.name)
 
 
 def rank_products(product_stats_df, N_results=None):
@@ -1266,6 +1448,89 @@ def add_rolling_avg_col(df, window_wks, data_col='ttl_sales'):
     col = 'rolling_{}wk'.format(window_wks)
     df[col] = df[data_col].rolling(window=boxcar).mean()
 
+
+
+class ImportSalesDataOLD(object):
+    """
+    FOR USE IN "TOY DATABASE" CONSISTING OF DATA AGGREGATED TO DAILY FREQUENCY
+    Query sales data from postgres and import to pandas data objects. Initialize
+    with product ID (int) or name (string) then run main() method to populate attributes
+
+    ATTRIBUTES:
+     -- product_df: pandas time series (DataFrame) with daily sales in dollars and units
+     -- sales: pandas time series (Series) of total daily sales
+     -- units_sold: pandas time series (Series) of total daily units sold
+     -- product_id (int)
+     -- product_name (string)
+     -- ts_start, ts_end (Datetime) start and end dates for time series, to assist
+           testing for continuity and synchronization among comparative products
+
+    NOTE: DataFrame and Series title strings with product name and ID may be accessed
+        via DataFrame.name and Series.name attributes
+    """
+
+    def __init__(self, product):
+        self.product = product
+        self.product_id = None
+        self.product_name = None
+        self._query = None
+        self._connection_str = 'postgresql:///uplift'
+        self._conn = None
+        self.product_df = None
+        self.sales = None
+        self.units_sold = None
+        self.ts_start, self.ts_end = None, None
+
+    def main(self):
+        self._retrieve_ID()
+        self._query_product_sales()
+        self._connect_to_postgres()
+        self._SQL2pandasdf()
+
+    def _retrieve_ID(self):
+        if type(self.product) == str:
+            key = self.product.lower()
+            self.product_id = strain_dict[key]
+        else:
+            self.product_id = self.product
+
+    def _query_product_sales(self):
+        self._query = ("""
+        SELECT CAST(DATE_TRUNC('day', date_of_sale) AS DATE) as date
+         , strain_name as product_name
+         , generic_strain_id as product_id
+         , ROUND(SUM(retail_price)) as ttl_sales
+         , ROUND(SUM(retail_units)) as ttl_units_sold
+        FROM daily_sales
+        WHERE generic_strain_id = {}
+        GROUP BY date, strain_name, generic_strain_id
+        ORDER BY date;
+        """).format(self.product_id)
+
+    def _connect_to_postgres(self):
+        self._conn = create_engine(self._connection_str)
+
+    def _SQL2pandasdf(self):
+        stage_1 = pd.read_sql_query(self._query, self._conn)
+        stage_2 = pd.DataFrame(stage_1[['ttl_sales', 'ttl_units_sold']])
+        stage_2.index = pd.DatetimeIndex(stage_1['date'])
+
+        # Construct continuous time series even if data is discontinuous
+        self.ts_start, self.ts_end = stage_2.index[0], stage_2.index[-1]
+        main_idx = pd.date_range(start=self.ts_start, end=self.ts_end)
+        self.product_df = pd.DataFrame(index=main_idx)
+
+        self.product_df['ttl_sales'] = stage_2['ttl_sales']
+        self.product_df['ttl_units_sold'] = stage_2['ttl_units_sold']
+        self.product_name = names_formatted[product_name_from_ID(self.product_id)]
+        df_name = '{} (ID: {})'.format(self.product_name, self.product_id)
+        self.product_df.name = df_name
+
+        self.sales = self.product_df['ttl_sales']
+        self.sales.name = df_name + ' -- Daily Sales'
+
+        self.units_sold = self.product_df['ttl_units_sold']
+        self.units_sold.name = df_name + ' -- Daily Units Sold'
 
 
 if __name__=='__main__':

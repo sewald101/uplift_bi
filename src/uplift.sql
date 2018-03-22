@@ -1,3 +1,66 @@
+/* PIPELINE FROM WEEKLY SALES CSV PROVIDED BY MAX TO TABLE SUITED FOR
+QUERIES FROM ImportSalesData CLASS*/
+
+/* 1. CREATE TABLE FOR RAW WEEKLY SALES*/
+CREATE TABLE weekly_retail_sales (
+  record INTEGER,
+  week_beginning TIMESTAMP,
+  retailer_id INTEGER,
+  seller_id INTEGER,
+  strain_id NUMERIC(15, 2),
+  inventory_type_id INTEGER,
+  retail_price NUMERIC(15,2),
+  retail_units NUMERIC(15,4)
+);
+
+/* 2. COPY DATA INTO weekly_retail_sales TABLE */
+COPY weekly_retail_sales
+FROM '/data/uplift/Data/weekly_generic_strain_sales.csv'
+DELIMITER ',' CSV HEADER;
+
+/* 3. CREATE TABLE JOINING WEEKLY SALES WITH GEOGRAPHIC DATA*/
+CREATE TABLE weekly_sales AS (
+  SELECT wrs.record
+   , wrs.week_beginning
+   , wrs.retailer_id
+   , loc.city
+   , loc.zip
+   , CAST(wrs.strain_id AS INTEGER) AS strain_id
+   , wrs.retail_price
+   , wrs.retail_units
+  FROM weekly_retail_sales wrs
+  JOIN locations loc
+  ON wrs.retailer_id = loc.wa_location_id
+);
+
+/* 4. CREATE NEW COLUMN WITH 5-DIGIT ZIPCODE AS INT*/
+-- 4.a, RENAME TO PREP FOR COPY
+ALTER TABLE weekly_sales RENAME COLUMN zip to zip_full;
+-- 4.b, ADD A NEW, BLANK COLUMN
+ALTER TABLE weekly_sales ADD COLUMN zip VARCHAR;
+-- 4.c, PLACE FIRST FIVE DIGITS INTO NEW COLUMN
+UPDATE weekly_sales
+SET zip=(LEFT(zip_full, 5));
+-- 4.d, RECAST zip as INT
+ALTER TABLE weekly_sales ALTER COLUMN zip TYPE integer USING (zip::INTEGER);
+
+
+
+
+/* QUERY for ImmportSalesData function, FROM WEEKLY DATA*/
+SELECT CAST(DATE_TRUNC('day', week_beginning) AS DATE) as week_beg
+ --, zip
+ --, retailer_id
+ --, strain_id as product_id
+ , ROUND(SUM(retail_price)) as ttl_sales
+ , ROUND(SUM(retail_units)) as ttl_units_sold
+FROM weekly_sales
+WHERE strain_id = 3
+--AND retailer_id = 227
+--AND city = 'FORKS'
+AND zip = 98121
+GROUP BY week_beg--, product_id, zip, retailer_id
+ORDER BY week_beg;
 
 /* DAILY SALES for STRAIN */
 SELECT CAST(DATE_TRUNC('day', ds.date_of_sale) AS DATE) as date
