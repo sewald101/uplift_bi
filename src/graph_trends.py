@@ -74,12 +74,16 @@ def PlotRawData(product=None, location=None, city=None, zipcode=None,
     else:
         ts = stage_1.units_sold
 
-    # Plot data
-    plt.figure(figsize=(16, fig_height))
-    plt.plot(ts)
-    plt.grid(linewidth=0.5, color='0.7', linestyle='--')
-    plt.title(ts.name)
-    plt.show()
+    # Plot data    
+    try:
+        plt.figure(figsize=(16, fig_height))
+        plt.plot(ts)
+    except ValueError:
+        return
+    else:
+        plt.grid(linewidth=0.5, color='0.7', linestyle='--')
+        plt.title(ts.name)
+        plt.show()
 
 
 

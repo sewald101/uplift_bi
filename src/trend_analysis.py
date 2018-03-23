@@ -643,7 +643,7 @@ def ProductStatsDF(period_wks, end_date, products=[None], locations=[None],
                 data.append(stats)
 
             if counter < 1: # first loop, grab name for output DF
-                df_name = name
+                df_name = 'Product Comparison, ' + name.split(', ')[-1]
             counter += 1
 
     if import_type == 'D': # iterate on a place
@@ -660,7 +660,13 @@ def ProductStatsDF(period_wks, end_date, products=[None], locations=[None],
                     data.append(stats)
 
                 if counter < 1:
-                    df_name = name
+                    if products[0] is None:
+                        df_name = 'Comparison by Business, ' + name.split(', ')[-1]
+                    else:
+                        df_name = (name.split(', ')[0]
+                                   + ', Comparison by Business, '
+                                   + name.split(', ')[-1]
+                                   )
                 counter += 1
 
         if var_idx == 2:
@@ -676,7 +682,13 @@ def ProductStatsDF(period_wks, end_date, products=[None], locations=[None],
                     data.append(stats)
 
                 if counter < 1:
-                    df_name = name
+                    if products[0] is None:
+                        df_name = 'Comparison by City, ' + name.split(', ')[-1]
+                    else:
+                        df_name = (name.split(', ')[0]
+                                   + ', Comparison by City, '
+                                   + name.split(', ')[-1]
+                                   )
                 counter += 1
 
         if var_idx == 3:
@@ -692,7 +704,13 @@ def ProductStatsDF(period_wks, end_date, products=[None], locations=[None],
                     data.append(stats)
 
                 if counter < 1:
-                    df_name = name
+                    if products[0] is None:
+                        df_name = 'Comparison by Zipcode, ' + name.split(', ')[-1]
+                    else:
+                        df_name = (name.split(', ')[0]
+                                   + ', Comparison by Zipcode, '
+                                   + name.split(', ')[-1]
+                                   )
                 counter += 1
 
     try:
