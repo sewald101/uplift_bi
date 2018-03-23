@@ -453,15 +453,27 @@ class ProductTrendsDF(object):
         B = 'Statewide '
 
         first_parse = self.ts.name.split(' -- Daily ')
-        if 'ID' in first_parse[0]:
+        if 'ID' in first_parse[0] and 'Location' not in first_parse[0]:
             self.product_name = first_parse[0].split(' (ID: ')[0]
             self.product_ID = int(first_parse[0].split(' (ID: ')[1].split(')')[0])
             A = '{} (ID: {}), '.format(self.product_name, self.product_ID)
 
-        if 'Location' in first_parse[0]:
+        if 'Location' in first_parse[0] and first_parse[0].count('ID') == 1:
             self.place_name = first_parse[0].split(': ')[-2][:-4]
-            self.place_ID = int(first_parse[0].split('(ID: ')[-1][:-1])
-            B = 'Retailer: {} (ID: {}), '.format(self.place_name, self.place_ID)
+            self.place_ID = int(
+                first_parse[0].split(' (ID: ')[-1].split(')')[0]
+                )
+            B = 'Location: {} (ID: {}), '.format(self.place_name, self.place_ID)
+
+        if first_parse[0].count('ID') == 2:
+            self.product_name = first_parse[0].split(' (ID: ')[0]
+            self.product_ID = int(first_parse[0].split(' (ID: ')[1].split(')')[0])
+            A = '{} (ID: {}), '.format(self.product_name, self.product_ID)
+            self.place_name = first_parse[0].split(': ')[-2][:-4]
+            self.place_ID = int(
+                first_parse[0].split(' (ID: ')[-1].split(')')[0]
+                )
+            B = 'Location: {} (ID: {}), '.format(self.place_name, self.place_ID)
 
         if 'City' in first_parse[0]:
             self.place_name = first_parse[0].split('City: ')[-1]
@@ -589,170 +601,122 @@ def ProductStatsDF(period_wks, end_date, products=[None], locations=[None],
         print (
         '\nERROR: CONFLICTING VALUES ENTERED AMONG PRODUCTS, LOCATIONS, CITIES, '
         'AND/OR ZIPCODES ARGUMENTS.\n'
-        'ONLY ONE OF THOSE FOUR LIST-ARGUMENTS MANY CONTAIN MORE THAN ONE VALUE.\n'
+        'ONLY ONE OF THOSE FOUR LIST-ARGUMENTS MAY CONTAIN MORE THAN ONE VALUE.\n'
              )
         return
 
-    if import_type == 'A':
+    if import_type == 'A': # Statewide data for all products
         stats, NaN_ratio, name = import_ala_params(period_wks, end_date,
              MA_params=MA_params, normed=normed, baseline=baseline,
              compute_on_sales=compute_on_sales, NaN_allowance=NaN_allowance)
 
-        data.append(trends_data.trend_stats)
-        df_name = name.split(') ')[1]
+        data.append(stats)
+        df_name = name
 
-    if import_type == 'B':
-        raw_data = ImportSalesData(product=products[0], location=locations[0],
-                                   city=cities[0], zipcode=zipcodes[0])
-        raw_data.main()
-        if compute_on_sales:
-            ts = raw_data.sales
-        else:
-            ts = raw_data.units_sold
-
-        trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
-                                     normed, baseline, NaN_filler=0.0)
-        trends_data.main()
-
-        # If null vals in sample exceed allowance threshold, dump product into
-        # rejected dict and exclude from output DF
-        if trends_data.NaNs_ratio > NaN_allowance / 100.:
-            rejected[trends_data.product_ID] = trends_data.NaNs_ratio
-
+    if import_type == 'B': # Single product or place specified
+        stats, NaN_ratio, name = import_ala_params(period_wks, end_date,
+            product=products[0], location=locations[0], city=cities[0],
+            zipcode=zipcodes[0], MA_params=MA_params, normed=normed, baseline=baseline,
+            compute_on_sales=compute_on_sales, NaN_allowance=NaN_allowance)
+        # If null vals in sample exceed allowance threshold, dump product or place
+        # into rejected dict and exclude from output DF
+        if NaN_ratio > NaN_allowance / 100.:
+            if products[0] is not None:
+                rejected[stats['product_name']] = NaN_ratio
+            else:
+                rejected[stats['place_name']] = NaN_ratio
 
         else:
-            data.append(trends_data.trend_stats)
+            data.append(stats)
+            df_name = name
 
-        if counter < 1: # first loop, extract df name from ProductTrendsDF
-            df_name = trends_data.trendsDF.name.split(') ')[1]
-
-    if import_type == 'C':
+    if import_type == 'C': # Iterate on products
         for prod in products:
-            raw_data = ImportSalesData(product=prod, location=locations[0],
-                                       city=cities[0], zipcode=zipcodes[0])
-            raw_data.main()
-            if compute_on_sales:
-                ts = raw_data.sales
+            stats, NaN_ratio, name = import_ala_params(period_wks, end_date,
+                product=prod, location=locations[0], city=cities[0],
+                zipcode=zipcodes[0], MA_params=MA_params, normed=normed, baseline=baseline,
+                compute_on_sales=compute_on_sales, NaN_allowance=NaN_allowance)
+
+            if NaN_ratio > NaN_allowance / 100.:
+                rejected[stats['product_name']] = NaN_ratio
             else:
-                ts = raw_data.units_sold
+                data.append(stats)
 
-            trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
-                                         normed, baseline, NaN_filler=0.0)
-            trends_data.main()
-
-            # If null vals in sample exceed allowance threshold, dump product into
-            # rejected dict and exclude from output DF
-            if trends_data.NaNs_ratio > NaN_allowance / 100.:
-                rejected[trends_data.product_ID] = trends_data.NaNs_ratio
-                continue
-
-            else:
-                data.append(trends_data.trend_stats)
-
-            if counter < 1: # first loop, extract df name from ProductTrendsDF
-                df_name = trends_data.trendsDF.name.split(') ')[1]
+            if counter < 1: # first loop, grab name for output DF
+                df_name = name
             counter += 1
 
-    if import_type == 'D':
+    if import_type == 'D': # iterate on a place
         if var_idx == 1:
             for loc in locations:
-                raw_data = ImportSalesData(product=products[0], location=loc)
-                raw_data.main()
-                if compute_on_sales:
-                    ts = raw_data.sales
+                stats, NaN_ratio, name = import_ala_params(period_wks, end_date,
+                    product=products[0], location=loc, MA_params=MA_params,
+                    normed=normed, baseline=baseline,
+                    compute_on_sales=compute_on_sales, NaN_allowance=NaN_allowance)
+
+                if NaN_ratio > NaN_allowance / 100.:
+                    rejected[stats['place_name']] = NaN_ratio
                 else:
-                    ts = raw_data.units_sold
+                    data.append(stats)
 
-                trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
-                                             normed, baseline, NaN_filler=0.0)
-                trends_data.main()
-
-                # If null vals in sample exceed allowance threshold, dump product into
-                # rejected dict and exclude from output DF
-                if trends_data.NaNs_ratio > NaN_allowance / 100.:
-                    rejected[trends_data.product_ID] = trends_data.NaNs_ratio
-                    continue
-
-                else:
-                    data.append(trends_data.trend_stats)
-
-                if counter < 1: # first loop, extract df name from ProductTrendsDF
-                    df_name = trends_data.trendsDF.name.split(') ')[1]
+                if counter < 1:
+                    df_name = name
                 counter += 1
 
         if var_idx == 2:
             for city in cities:
-                raw_data = ImportSalesData(product=products[0], city=city)
-                raw_data.main()
-                if compute_on_sales:
-                    ts = raw_data.sales
+                stats, NaN_ratio, name = import_ala_params(period_wks, end_date,
+                    product=products[0], city=city, MA_params=MA_params, normed=normed,
+                    baseline=baseline, compute_on_sales=compute_on_sales,
+                    NaN_allowance=NaN_allowance)
+
+                if NaN_ratio > NaN_allowance / 100.:
+                    rejected[stats['place_name']] = NaN_ratio
                 else:
-                    ts = raw_data.units_sold
+                    data.append(stats)
 
-                trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
-                                             normed, baseline, NaN_filler=0.0)
-                trends_data.main()
-
-                # If null vals in sample exceed allowance threshold, dump product into
-                # rejected dict and exclude from output DF
-                if trends_data.NaNs_ratio > NaN_allowance / 100.:
-                    rejected[trends_data.product_ID] = trends_data.NaNs_ratio
-                    continue
-
-                else:
-                    data.append(trends_data.trend_stats)
-
-                if counter < 1: # first loop, extract df name from ProductTrendsDF
-                    df_name = trends_data.trendsDF.name.split(') ')[1]
+                if counter < 1:
+                    df_name = name
                 counter += 1
 
         if var_idx == 3:
-            for zip in zipcodes:
-                raw_data = ImportSalesData(product=products[0], zipcode=zip)
-                raw_data.main()
-                if compute_on_sales:
-                    ts = raw_data.sales
+            for zipcode in zipcodes:
+                stats, NaN_ratio, name = import_ala_params(period_wks, end_date,
+                    product=products[0], zipcode=zipcode, MA_params=MA_params,
+                    normed=normed, baseline=baseline,
+                    compute_on_sales=compute_on_sales, NaN_allowance=NaN_allowance)
+
+                if NaN_ratio > NaN_allowance / 100.:
+                    rejected[stats['place_name']] = NaN_ratio
                 else:
-                    ts = raw_data.units_sold
+                    data.append(stats)
 
-                trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params,
-                                             normed, baseline, NaN_filler=0.0)
-                trends_data.main()
-
-                # If null vals in sample exceed allowance threshold, dump product into
-                # rejected dict and exclude from output DF
-                if trends_data.NaNs_ratio > NaN_allowance / 100.:
-                    rejected[trends_data.product_ID] = trends_data.NaNs_ratio
-                    continue
-
-                else:
-                    data.append(trends_data.trend_stats)
-
-                if counter < 1: # first loop, extract df name from ProductTrendsDF
-                    df_name = trends_data.trendsDF.name.split(') ')[1]
+                if counter < 1:
+                    df_name = name
                 counter += 1
 
-
-    product_stats_df = pd.DataFrame(data, columns=data[0].keys())
-    product_stats_df.name = df_name
-
-    if print_rejects:
-        if len(rejected) > 0:
-            print('Data for the following product(s) exceed allowance for '
-                  'null values and are excluded\nfrom statistical aggregation '
-                  'and/or ranking:\n')
-            for k, v in rejected.iteritems():
-                print('{} (ID:{}) -- Percent Null: {}%').format(
-                    names_formatted[product_name_from_ID(k)],
-                    k,
-                    round(v * 100, 2)
-                )
-            print '\n'
-
-    if return_rejects:
-        return product_stats_df, rejected
+    try:
+        product_stats_df = pd.DataFrame(data, columns=data[0].keys())
+    except IndexError:
+        print ('\nNO DATA AVAILABLE IN SPECIFIED PERIOD FOR PRODUCT AND/OR PLACE.\n'
+               'Utilize PlotRawData function to view data availability over time.\n'
+               )
     else:
-        return product_stats_df
+        product_stats_df.name = df_name
+
+        if print_rejects:
+            if len(rejected) > 0:
+                print('Data for the following product(s) and/or place(s) exceed allowance for '
+                      'null values \nand are excluded from statistical aggregation '
+                      'and/or ranking:\n')
+                for k, v in rejected.iteritems():
+                    print('{} -- Percent Null: {}%').format(k, round(v * 100, 2))
+                print '\n'
+
+        if return_rejects:
+            return product_stats_df, rejected
+        else:
+            return product_stats_df
 
 
 
@@ -1341,7 +1305,7 @@ def select_import_params(arg_list):
     elif find_var.count(True) == 1: # If one argument contains multiple values (the 'variable')
         if find_var.index(True) == 0: # Compare / iterate on product
             return 'C', None
-        else: # Compare / iterate on place
+        else: # Compare / iterate on places
             return 'D', find_var.index(True)
 
 
