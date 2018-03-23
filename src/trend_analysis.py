@@ -3,12 +3,12 @@ UTILITIES FOR SALES TREND ANALYSIS
 
 CLASSES:
  -- ImportSalesData(product_id)
- -- ProductTrendsDF(ts, period_wks, end_date=None, MA_params=None,
+ -- SalesTrendsDF(ts, period_wks, end_date=None, MA_params=None,
                    exp_smooth_params=None, normed=True)
- -- RankProducts(product_stats_df, N_results=None)
+ -- RankProductsPlacesPlaces(product_stats_df, N_results=None)
 
 MAJOR FUNCTIONS:
- -- ProductStatsDF(product_IDs, period_wks, end_date=None, MA_params=None,
+ -- SalesStatsDF(product_IDs, period_wks, end_date=None, MA_params=None,
                    exp_smooth_params=None, normed=True, compute_on_sales=True)
  -- CompTrendsDF(product_IDs, period_wks, end_date=None, MA_param=None,
                    exp_smooth_param=None, shifted=False, normed=False,
@@ -249,7 +249,7 @@ class ImportSalesData(object):
                 self.units_sold.name = self.df_name + ' -- Weekly Units Sold'
 
 
-class ProductTrendsDF(object):
+class SalesTrendsDF(object):
     """Convert raw time series sales or unit-sales data for a single product into
     engineered trend data, including rolling averages and exponentially smoothed
     trends for both absolute and normalized (rescaled) values.
@@ -543,7 +543,7 @@ class ProductTrendsDF(object):
 
 
 
-def ProductStatsDF(period_wks, end_date, products=[None], locations=[None],
+def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
                    cities=[None], zipcodes=[None], MA_params=None, normed=True,
                    baseline='t_zero', compute_on_sales=True, NaN_allowance=5,
                    print_rejects=False, return_rejects=False):
@@ -625,7 +625,6 @@ def ProductStatsDF(period_wks, end_date, products=[None], locations=[None],
                 rejected[stats['product_name']] = NaN_ratio
             else:
                 rejected[stats['place_name']] = NaN_ratio
-
         else:
             data.append(stats)
             df_name = name
@@ -643,7 +642,23 @@ def ProductStatsDF(period_wks, end_date, products=[None], locations=[None],
                 data.append(stats)
 
             if counter < 1: # first loop, grab name for output DF
-                df_name = 'Product Comparison, ' + name.split(', ')[-1]
+                if locations[0] is not None:
+                    df_name = ('Product Comparison, '
+                               + name.split(', ')[-1]
+                               + ', Business: {}'.format(locations[0].upper())
+                               )
+                elif cities[0] is not None:
+                    df_name = ('Product Comparison, '
+                               + name.split(', ')[-1]
+                               + ', City: {}'.format(cities[0].upper())
+                               )
+                elif zipcodes[0] is not None:
+                    df_name = ('Product Comparison, '
+                               + name.split(', ')[-1]
+                               + ', Zipcode: {}'.format(zipcodes[0])
+                               )
+                else:
+                    df_name = 'Product Comparison, ' + name.split(', ')[-1]
             counter += 1
 
     if import_type == 'D': # iterate on a place
@@ -788,7 +803,7 @@ def CompTrendsDF(products, period_wks, end_date, MA_param=None,
     # Title elements
     if MA_param:
         A = '{}-Week Moving Average of '.format(MA_param)
-        MA_param = [MA_param] # insert single param to list for ProductTrendsDF class
+        MA_param = [MA_param] # insert single param to list for SalesTrendsDF class
     if exp_smooth_param:
         B = ', Exponentially Smoothed (alpha: {})'.format(exp_smooth_param)
         exp_smooth_param = [exp_smooth_param]
@@ -805,7 +820,7 @@ def CompTrendsDF(products, period_wks, end_date, MA_param=None,
             else:
                 stage_1_ts = stage_1.units_sold
 
-            stage_2 = ProductTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
+            stage_2 = SalesTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
                             exp_smooth_param, normed=True, baseline=baseline,
                             NaN_filler=NaN_filler)
             stage_2.main()
@@ -855,7 +870,7 @@ def CompTrendsDF(products, period_wks, end_date, MA_param=None,
             else:
                 stage_1_ts = stage_1.units_sold
 
-            stage_2 = ProductTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
+            stage_2 = SalesTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
                             exp_smooth_param, normed=True, baseline=baseline,
                             NaN_filler=NaN_filler)
             stage_2.main()
@@ -891,9 +906,9 @@ def column_sel(MA_param=None, exp_smooth_param=None, shifted=False, normed=False
         return 5
 
 
-class RankProducts(object):
-    """Initialize with ProductStatsDF object and (optionally) by number of top
-    results desired; Rank products by user_selected statistic
+class RankProductsPlaces(object):
+    """Initialize with SalesStatsDF object and (optionally) by number of top
+    results desired; Rank products or places by user_selected statistic.
 
     METHOD:
      -- main(): Rank products and populate attributes using kwargs:
@@ -914,11 +929,12 @@ class RankProducts(object):
 
     """
 
-    def __init__(self, product_stats_df, N_results=None):
-        self.product_stats_df = product_stats_df
+    def __init__(self, sales_stats_df, N_results=None):
+        self.sales_stats_df = sales_stats_df
         self.N_results = N_results
         self.results = None
-        self.ranked_IDs = None
+        self.ranked_products = None
+        self.ranked_places = None
         self.ranked_df = None
 
 
@@ -941,49 +957,63 @@ class RankProducts(object):
 
         """
 
+        # Grab the column with statistic for ranking
         if stat:
-            cols = self.product_stats_df.columns
+            cols = self.sales_stats_df.columns
             if stat == 'sales':
-                stat_idx = 2
-            if not smoothed and stat == 'gain':
-                stat_idx = 3
-            if not smoothed and stat == 'rate':
                 stat_idx = 4
-            if smoothed and stat == 'gain':
+            if not smoothed and stat == 'gain':
                 stat_idx = 5
-            if smoothed and stat == 'rate':
+            if not smoothed and stat == 'rate':
                 stat_idx = 6
+            if smoothed and stat == 'gain':
+                stat_idx = 7
+            if smoothed and stat == 'rate':
+                stat_idx = 8
 
             stat_col = cols[stat_idx]
 
         else:
             stat_idx = self._sel_rank_by()
-            stat_col = self.product_stats_df.columns[stat_idx]
+            stat_col = self.sales_stats_df.columns[stat_idx]
 
-        output_cols = list(self.product_stats_df.columns)
+        output_cols = list(self.sales_stats_df.columns)
         output_cols.remove(stat_col)
-        output_cols.insert(2, stat_col)
+        output_cols.insert(4, stat_col)
 
-        ranked = self.product_stats_df.sort_values(by=stat_col, ascending=False)
+        ranked = self.sales_stats_df.sort_values(by=stat_col, ascending=False)
         ranked.index = range(1, len(ranked.index) + 1)
 
         if self.N_results:
-            self.ranked_df = ranked[output_cols][:self.N_results]
-            self.ranked_IDs = self.ranked_df['product_id'].values
-            self.results = self.ranked_df.iloc[:,:3]
-        else:
-            self.ranked_df = ranked[output_cols]
-            self.ranked_IDs = self.ranked_df['product_id'].values
-            self.results = self.ranked_df.iloc[:,:3]
+            # if ranking by product...
+            if len(self.sales_stats_df['product_name'].unique()) > 1:
+                self.ranked_df = ranked[output_cols][:self.N_results]
+                self.ranked_products = self.ranked_df['product_id'].values
+                self.results = self.ranked_df.iloc[:,:5]
+            else: # if ranking by place...
+                self.ranked_df = ranked[output_cols][:self.N_results]
+                self.ranked_places = self.ranked_df['place_name'].values
+                self.results = self.ranked_df.iloc[:,:5]
 
-        self.results.name = self.product_stats_df.name
-        self.ranked_df.name = self.product_stats_df.name + \
+        else:
+            # if ranking by product...
+            if len(self.sales_stats_df['product_name'].unique()) > 1:
+                self.ranked_df = ranked[output_cols]
+                self.ranked_products = self.ranked_df['product_id'].values
+                self.results = self.ranked_df.iloc[:,:5]
+            else: # if ranking by place...
+                self.ranked_df = ranked[output_cols]
+                self.ranked_places = self.ranked_df['place_name'].values
+                self.results = self.ranked_df.iloc[:,:5]
+
+        self.results.name = self.sales_stats_df.name
+        self.ranked_df.name = self.sales_stats_df.name + \
                 ', Ranked by {}'.format(stat_col)
 
 
     def _sel_rank_by(self):
         "Prompt user for column for ranking; return its index"
-        cols = self.product_stats_df.columns[2:]
+        cols = self.sales_stats_df.columns[4:]
         index = range(1, len(cols) + 1)
         menu = dict(zip(index, cols))
         for k, v in menu.iteritems():
@@ -1005,7 +1035,7 @@ def HbarData(product_IDs, end_date, period_wks=10,
     further details."""
 
     boxcar = [MA] if MA else None
-    prod_stats = ProductStatsDF(product_IDs, period_wks, end_date,
+    prod_stats = SalesStatsDF(product_IDs, period_wks, end_date,
                 MA_params=boxcar, compute_on_sales=rank_on_sales,
                 NaN_allowance=NaN_allowance, print_rejects=print_rejects)
     if MA:
@@ -1014,9 +1044,9 @@ def HbarData(product_IDs, end_date, period_wks=10,
         base_name = prod_stats.name + ' -- '
 
 
-    if len(rank_by) < 2 or fixed_order: # just need the RankProducts.results object
+    if len(rank_by) < 2 or fixed_order: # just need the RankProductsPlaces.results object
         if len(rank_by) < 2:
-            rank_1 = RankProducts(prod_stats)
+            rank_1 = RankProductsPlaces(prod_stats)
             if MA:
                 rank_1.main(stat=rank_by[0])
             else:
@@ -1025,7 +1055,7 @@ def HbarData(product_IDs, end_date, period_wks=10,
             data.drop(['product_id'], axis=1, inplace=True)
 
         else:
-            rank_1 = RankProducts(prod_stats)
+            rank_1 = RankProductsPlaces(prod_stats)
             rank_1.main(smoothed=MA, stat=rank_by[0])
             all_data = rank_1.ranked_df
             df_cols = all_data.columns
@@ -1038,12 +1068,12 @@ def HbarData(product_IDs, end_date, period_wks=10,
 
 
     if len(rank_by) > 1 and not fixed_order:
-            rank_1 = RankProducts(prod_stats)
+            rank_1 = RankProductsPlaces(prod_stats)
             rank_1.main(smoothed=MA, stat=rank_by[0])
             data = rank_1.results
 
             for i, rank_stat in enumerate(rank_by[1:]):
-                rank_next = RankProducts(prod_stats)
+                rank_next = RankProductsPlaces(prod_stats)
                 rank_next.main(smoothed=MA, stat=rank_stat)
                 next_ranked = rank_next.results
                 data['Ranking By {}'.format(rank_stat)] = next_ranked.iloc[:,0].values
@@ -1141,7 +1171,7 @@ def BestSellerData(products, end_date, period_wks=10, MA_param=5, NaN_allowance=
 
         # Compute stats on products for one test period at a time
         if MA_param:
-            psdf, rej = ProductStatsDF(products, period_wks=period_wks, end_date=end_d,
+            psdf, rej = SalesStatsDF(products, period_wks=period_wks, end_date=end_d,
                     MA_params=[MA_param], NaN_allowance=NaN_allowance,
                     print_rejects=print_rejects, return_rejects=True,
                     normed=True, compute_on_sales=compute_on_sales
@@ -1155,7 +1185,7 @@ def BestSellerData(products, end_date, period_wks=10, MA_param=5, NaN_allowance=
             else: pass
 
         else: # if no moving-avg window specified . . .
-            psdf, rej = ProductStatsDF(products, period_wks=period_wks, end_date=end_d,
+            psdf, rej = SalesStatsDF(products, period_wks=period_wks, end_date=end_d,
                     NaN_allowance=NaN_allowance, print_rejects=print_rejects,
                     return_rejects=True, normed=True,
                     compute_on_sales=compute_on_sales
@@ -1167,7 +1197,7 @@ def BestSellerData(products, end_date, period_wks=10, MA_param=5, NaN_allowance=
                 else: pass
             else: pass
 
-        ranked = RankProducts(psdf)
+        ranked = RankProductsPlaces(psdf)
         if MA_param:
             ranked.main(smoothed=True, stat=rank_by)
         else:
@@ -1343,7 +1373,7 @@ def import_ala_params(period_wks, end_date, product=None, location=None, city=No
     else:
         ts = raw_data.units_sold
 
-    trends_data = ProductTrendsDF(ts, period_wks, end_date, MA_params, normed, baseline,
+    trends_data = SalesTrendsDF(ts, period_wks, end_date, MA_params, normed, baseline,
                                   NaN_filler=0.0)
     trends_data.main()
 
@@ -1529,15 +1559,15 @@ if __name__=='__main__':
     sales_3 = product_3.sales # time series (pd.Series) of daily sales
     units_3 = product_3.units_sold # time Series of daily units sold
 
-    """Run ProductTrendsDF method and access class attributes"""
-    trends_3 = ProductTrendsDF(sales_3, sample_period, MA_params=MAs)
+    """Run SalesTrendsDF method and access class attributes"""
+    trends_3 = SalesTrendsDF(sales_3, sample_period, MA_params=MAs)
     trends_3.main()
     trends_df_3 = trends_3._trendsDF # DataFrame with columns of transformed data
     stats_3 = trends_3.trend_stats # Single record (OrderedDict) of stats for product
 
-    """Run ProductStatsDF function to generate comparative stats DF; Builds DF from
-    individual records in the form of ProductTrendsDF.trend_stats objects"""
-    comps_df = ProductStatsDF(products, sample_period, MA_params=MAs)
+    """Run SalesStatsDF function to generate comparative stats DF; Builds DF from
+    individual records in the form of SalesTrendsDF.trend_stats objects"""
+    comps_df = SalesStatsDF(products, sample_period, MA_params=MAs)
 
     """Print various attributes (names, DFs, Series) to test pipeline"""
     print(raw_df_3.name)

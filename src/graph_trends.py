@@ -39,10 +39,10 @@ from palettable.colorbrewer.sequential import (Greens_5, Greens_9,
 
 import trend_analysis as ta
 from trend_analysis import ImportSalesData # converts single product data to df
-from trend_analysis import ProductTrendsDF # transforms single product data
-from trend_analysis import ProductStatsDF # compiles stats for multiple products
+from trend_analysis import SalesTrendsDF # transforms single product data
+from trend_analysis import SalesStatsDF # compiles stats for multiple products
 from trend_analysis import CompTrendsDF # compares products by ts data
-from trend_analysis import RankProducts # returns ranked results
+from trend_analysis import RankProductsPlaces # returns ranked results
 from trend_analysis import HbarData
 
 from id_dict import (strain_dict, names_formatted, locations_dict,
@@ -74,7 +74,7 @@ def PlotRawData(product=None, location=None, city=None, zipcode=None,
     else:
         ts = stage_1.units_sold
 
-    # Plot data    
+    # Plot data
     try:
         plt.figure(figsize=(16, fig_height))
         plt.plot(ts)
