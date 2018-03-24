@@ -595,7 +595,7 @@ def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
     df_name = None
 
     product_place_args = [products, locations, cities, zipcodes]
-    import_type, var_idx = select_import_params(product_place_args)
+    import_type, var_index = select_import_params(product_place_args)
 
     if import_type == 'E':
         print (
@@ -662,7 +662,7 @@ def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
             counter += 1
 
     if import_type == 'D': # iterate on a place
-        if var_idx == 1:
+        if var_index == 1:
             for loc in locations:
                 stats, NaN_ratio, name = import_ala_params(period_wks, end_date,
                     product=products[0], location=loc, MA_params=MA_params,
@@ -684,7 +684,7 @@ def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
                                    )
                 counter += 1
 
-        if var_idx == 2:
+        if var_index == 2:
             for city in cities:
                 stats, NaN_ratio, name = import_ala_params(period_wks, end_date,
                     product=products[0], city=city, MA_params=MA_params, normed=normed,
@@ -706,7 +706,7 @@ def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
                                    )
                 counter += 1
 
-        if var_idx == 3:
+        if var_index == 3:
             for zipcode in zipcodes:
                 stats, NaN_ratio, name = import_ala_params(period_wks, end_date,
                     product=products[0], zipcode=zipcode, MA_params=MA_params,
@@ -819,42 +819,47 @@ def CompTrendsDF(period_wks, end_date, products=[None], locations=[None],
 
     # From user specifications, set variable for comparison and filter
     product_place_args = [products, locations, cities, zipcodes]
-    import_type, var_idx = select_import_params(product_place_args)
+    import_type, var_index = select_import_params(product_place_args)
 
     if import_type == ('A' or 'E'):
         print (
-        '\nERROR: CONFLICTING VALUES ENTERED OR MISSING AMONG PRODUCTS, LOCATIONS, CITIES, '
-        'AND/OR ZIPCODES ARGUMENTS.\n'
-        'Provide one argument for comparison and (optionally) add a second, either\n '
-        'a single product or a single place, as a filter. No args, more than two args, or\n '
-        'more than one arg that contains multiple values will produce this error.\n'
+        '\nERROR: CONFLICTING ARGUMENTS ENTERED (OR MISSING) AMONG PRODUCTS, LOCATIONS\n'
+        '       CITIES, AND/OR ZIPCODES.\n\n'
+        'Provide one argument for comparison and (optionally) add a second argument\n'
+        'as a filter. The filter may be a single product or a single place.\n'
+        'Check that NO MORE THAN ONE ARGUMENT contains multiple values.\n'
              )
         return
 
     if import_type == 'B': # Single product or place specified
         category = 'product' if products[0] is not None else 'place'
-        t_df, col_category = import_ala_params(period_wks, end_date,
-            product=products[0], location=locations[0], city=cities[0],
-            zipcode=zipcodes[0], MA_params=MA_param, normed=normed, baseline=baseline,
-            compute_on_sales=compute_on_sales, NaN_allowance=100,
+        t_df, col_category, filter_name, filter_ID = import_ala_params(
+            period_wks, end_date, product=products[0], location=locations[0],
+            city=cities[0], zipcode=zipcodes[0], MA_params=MA_param, normed=normed,
+            baseline=baseline, compute_on_sales=compute_on_sales, NaN_allowance=100,
             return_trendsDF=True, var_type=category)
 
-        df_title = CompTrendsDF_title(t_df, baseline, MA_param, shifted, normed)
         comp_trends_df = build_seed_or_source_df(t_df, NaN_filler, col_category,
                                                  col_index)
+        df_title = CompTrendsDF_title(t_df, col_index, var_index, baseline,
+                          MA_param, shifted, normed, filter_name, filter_ID)
         comp_trends_df.name = df_title
 
     if import_type == 'C': # Iterate on multiple products
         for prod in products:
-            t_df, col_category = import_ala_params(period_wks, end_date,
-                product=prod, location=locations[0], city=cities[0],
-                zipcode=zipcodes[0], MA_params=MA_param, normed=normed, baseline=baseline,
-                compute_on_sales=compute_on_sales, NaN_allowance=100,
-                return_trendsDF=True, var_type='product')
+            t_df, col_category, filter_name, filter_ID = import_ala_params(
+                period_wks, end_date, product=prod, location=locations[0],
+                city=cities[0], zipcode=zipcodes[0], MA_params=MA_param,
+                normed=normed, baseline=baseline, compute_on_sales=compute_on_sales,
+                NaN_allowance=100, return_trendsDF=True, var_type='product')
 
             if counter < 1: # Build the seed (base) df with first product
                 comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
                                  col_category, col_index)
+                df_title = CompTrendsDF_title(t_df, col_index, var_index,
+                    baseline, MA_param, shifted, normed, filter_name, filter_ID)
+                comp_trends_df.name = df_title
+
             else: # Add columns with subsequent products
                 build_seed_or_source_df(t_df, NaN_filler, col_category,
                 col_index, constr_seed_df=False, seed_df=comp_trends_df)
@@ -863,57 +868,85 @@ def CompTrendsDF(period_wks, end_date, products=[None], locations=[None],
 
 
     if import_type == 'D': # iterate on places
-        if var_idx == 1:
+        if var_index == 1:
             for loc in locations:
-                t_df, col_category = import_ala_params(period_wks, end_date,
-                    product=products[0], location=loc, MA_params=MA_param,
-                    normed=normed, baseline=baseline, return_trendsDF=True,
+                t_df, col_category, filter_name, filter_ID = import_ala_params(
+                    period_wks, end_date, product=products[0], location=loc,
+                    MA_params=MA_param, normed=normed, baseline=baseline,
                     compute_on_sales=compute_on_sales, NaN_allowance=100,
-                    var_type='place')
+                    return_trendsDF=True, var_type='place')
 
                 if counter < 1: # Build the seed df with first place
                     comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
                     col_category, col_index)
+
+                    df_title = CompTrendsDF_title(t_df, col_index, var_index,
+                             baseline, MA_param, shifted, normed, filter_name,
+                             filter_ID)
+                    comp_trends_df.name = df_title
+
                 else: # Add columns with subsequent places
                     build_seed_or_source_df(t_df, NaN_filler, col_category,
                     col_index, constr_seed_df=False, seed_df=comp_trends_df)
 
                 counter += 1
 
-        if var_idx == 2:
+        if var_index == 2:
             for city in cities:
-                t_df, col_category = import_ala_params(period_wks, end_date,
-                    product=products[0], city=city, MA_params=MA_param,
-                    normed=normed, baseline=baseline, compute_on_sales=compute_on_sales,
-                    NaN_allowance=100, return_trendsDF=True, var_type='place')
-
-                if counter < 1:
-                    comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
-                    col_category, col_index)
-                else:
-                    build_seed_or_source_df(t_df, NaN_filler, col_category,
-                    col_index, constr_seed_df=False, seed_df=comp_trends_df)
-
-                counter += 1
-
-        if var_idx == 3:
-            for zipcode in zipcodes:
-                t_df, col_category = import_ala_params(period_wks, end_date,
-                    product=products[0], zipcode=zipcode, MA_params=MA_param,
-                    normed=normed, baseline=baseline, return_trendsDF=True,
+                t_df, col_category, filter_name, filter_ID = import_ala_params(
+                    period_wks, end_date, product=products[0], city=city,
+                    MA_params=MA_param, normed=normed, baseline=baseline,
                     compute_on_sales=compute_on_sales, NaN_allowance=100,
-                    var_type='place')
+                    return_trendsDF=True, var_type='place')
 
                 if counter < 1:
                     comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
                     col_category, col_index)
+                    df_title = CompTrendsDF_title(t_df, col_index, var_index,
+                             baseline, MA_param, shifted, normed, filter_name,
+                             filter_ID)
+                    comp_trends_df.name = df_title
+
                 else:
                     build_seed_or_source_df(t_df, NaN_filler, col_category,
                     col_index, constr_seed_df=False, seed_df=comp_trends_df)
 
                 counter += 1
 
-    return comp_trends_df
+        if var_index == 3:
+            for zipcode in zipcodes:
+                t_df, col_category, filter_name, filter_ID = import_ala_params(
+                    period_wks, end_date, product=products[0], zipcode=zipcode,
+                    MA_params=MA_param, normed=normed, baseline=baseline,
+                    compute_on_sales=compute_on_sales, NaN_allowance=100,
+                    return_trendsDF=True, var_type='place')
+
+                if counter < 1:
+                    comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
+                    col_category, col_index)
+                    df_title = CompTrendsDF_title(t_df, col_index, var_index,
+                             baseline, MA_param, shifted, normed, filter_name,
+                             filter_ID)
+                    comp_trends_df.name = df_title
+
+                else:
+                    build_seed_or_source_df(t_df, NaN_filler, col_category,
+                    col_index, constr_seed_df=False, seed_df=comp_trends_df)
+
+                counter += 1
+
+    try:
+        return comp_trends_df
+
+    except UnboundLocalError:
+        print (
+        '\nERROR: CONFLICTING ARGUMENTS ENTERED (OR MISSING) AMONG PRODUCTS, LOCATIONS\n'
+        '       CITIES, AND/OR ZIPCODES.\n\n'
+        'Provide one argument for comparison and (optionally) add a second argument\n'
+        'as a filter. The filter may be a single product or a single place.\n'
+        'Check that NO MORE THAN ONE ARGUMENT contains multiple values.\n'
+             )
+        return
 
 
 def column_sel(MA_param=None, shifted=False, normed=False):
@@ -952,25 +985,41 @@ def build_seed_or_source_df(t_df, NaN_filler, col_category, col_index,
 
         seed_df[col_category] = t_df.iloc[:,col_index]
 
-def CompTrendsDF_title(t_df, baseline, MA_param, shifted, normed):
+def CompTrendsDF_title(t_df, col_index, var_index, baseline, MA_param, shifted,
+                       normed, filter_name, filter_ID):
+    """Construct df.name for CompTrendsDF."""
+
+    if filter_name is not None:
+        if var_index is not None: # filter is a single PRODUCT
+                A = '{} (ID: {}), '.format(filter_name, filter_ID)
+        else: # filter is a PLACE
+            if filter_ID is not None: # filter is a business
+                A = 'Business: {} (ID: {}), '.format(filter_name, filter_ID)
+            elif not filter_name.isdigit():
+                A = 'City: {}, '.format(filter_name)
+            else:
+                A = 'Zipcode: {}, '.format(filter_name)
+    else: # no filter specified
+        A = ''
+
     if MA_param is not None:
-        A = '{}-Week Moving Average of '.format(MA_param)
+        B = '{}-Week Moving Average of '.format(MA_param[0])
     bsln = baseline.capitalize() if baseline != 't_zero' else 'T0 = 0'
-    B = ', Data Shifted to {}'.format(bsln)
-    C = ', Data Rescaled (-50, 50) then Shifted to {}'.format(bsln)
-    D = t_df.name.split('in ')[1]
+    C = ', Data Shifted to {}'.format(bsln)
+    D = ', Data Rescaled (-50, 50) then Shifted to {}'.format(bsln)
+    E = t_df.name.split('in ')[1]
     if col_index == 0:
-        title = D
+        title = A + E
     if col_index == 1:
-        title = D + B
+        title = A + E + C
     if col_index == 2:
-        title = D + C
+        title = A + E + D
     if col_index == 3 and MA_param and not shifted:
-        title = A + D
+        title = A + B + E
     if col_index == 4 and MA_param and shifted:
-        title = A + D + B
+        title = A + B + E + C
     if col_index == 5 and MA_param and normed:
-        title = A + D + C
+        title = A + B + E + D
 
     return title
 
@@ -1454,11 +1503,22 @@ def import_ala_params(period_wks, end_date, product=None, location=None, city=No
 
     if return_trendsDF:
         if var_type == 'product':
-            col_name = trends_data.product_name
+            var_name = trends_data.product_name
+            filter_name = \
+            None if trends_data.place_name is None else trends_data.place_name
+            filter_ID = \
+            None if trends_data.place_ID is None else trends_data.place_ID
         else:
-            col_name = trends_data.place_name
+            var_name = trends_data.place_name
+            filter_name = \
+            None if trends_data.product_name is None else trends_data.product_name
+            filter_ID = \
+            None if trends_data.product_ID is None else trends_data.product_ID
 
-        return trends_data.trendsDF, col_name
+        return (trends_data.trendsDF,
+                var_name,
+                filter_name,
+                filter_ID)
 
     else:
         return (trends_data.trend_stats,
