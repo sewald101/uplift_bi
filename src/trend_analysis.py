@@ -811,10 +811,9 @@ def CompTrendsDF(period_wks, end_date, products=[None], locations=[None],
     # Column number to grab specified trend-type from TrendsDF object
     col_index = column_sel(MA_param, shifted, normed)
 
-    # Title elements
-    if MA_param:
-        A = '{}-Week Moving Average of '.format(MA_param)
-        MA_param = [MA_param] # insert single param to list for SalesTrendsDF class
+    # Insert single MA_param into list for SalesTrendsDF class
+    if MA_param is not None:
+        MA_param = [MA_param]
 
     counter = 0
 
@@ -840,8 +839,10 @@ def CompTrendsDF(period_wks, end_date, products=[None], locations=[None],
             compute_on_sales=compute_on_sales, NaN_allowance=100,
             return_trendsDF=True, var_type=category)
 
+        df_title = CompTrendsDF_title(t_df, baseline, MA_param, shifted, normed)
         comp_trends_df = build_seed_or_source_df(t_df, NaN_filler, col_category,
-                                                 col_index, baseline)
+                                                 col_index)
+        comp_trends_df.name = df_title
 
     if import_type == 'C': # Iterate on multiple products
         for prod in products:
@@ -853,10 +854,10 @@ def CompTrendsDF(period_wks, end_date, products=[None], locations=[None],
 
             if counter < 1: # Build the seed (base) df with first product
                 comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
-                                 col_category, col_index, baseline)
+                                 col_category, col_index)
             else: # Add columns with subsequent products
                 build_seed_or_source_df(t_df, NaN_filler, col_category,
-                col_index, baseline, constr_seed_df=False, seed_df=comp_trends_df)
+                col_index, constr_seed_df=False, seed_df=comp_trends_df)
 
             counter += 1
 
@@ -872,11 +873,10 @@ def CompTrendsDF(period_wks, end_date, products=[None], locations=[None],
 
                 if counter < 1: # Build the seed df with first place
                     comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
-                    col_category, col_index, baseline)
+                    col_category, col_index)
                 else: # Add columns with subsequent places
                     build_seed_or_source_df(t_df, NaN_filler, col_category,
-                    col_index, baseline, constr_seed_df=False,
-                    seed_df=comp_trends_df)
+                    col_index, constr_seed_df=False, seed_df=comp_trends_df)
 
                 counter += 1
 
@@ -889,11 +889,10 @@ def CompTrendsDF(period_wks, end_date, products=[None], locations=[None],
 
                 if counter < 1:
                     comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
-                    col_category, col_index, baseline)
+                    col_category, col_index)
                 else:
                     build_seed_or_source_df(t_df, NaN_filler, col_category,
-                    col_index, baseline, constr_seed_df=False,
-                    seed_df=comp_trends_df)
+                    col_index, constr_seed_df=False, seed_df=comp_trends_df)
 
                 counter += 1
 
@@ -907,11 +906,10 @@ def CompTrendsDF(period_wks, end_date, products=[None], locations=[None],
 
                 if counter < 1:
                     comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
-                    col_category, col_index, baseline)
+                    col_category, col_index)
                 else:
                     build_seed_or_source_df(t_df, NaN_filler, col_category,
-                    col_index, baseline, constr_seed_df=False,
-                    seed_df=comp_trends_df)
+                    col_index, constr_seed_df=False, seed_df=comp_trends_df)
 
                 counter += 1
 
@@ -938,41 +936,13 @@ def column_sel(MA_param=None, shifted=False, normed=False):
     if smoothed and normed:
         return 5
 
-def build_seed_or_source_df(t_df, NaN_filler, col_category, col_index, baseline,
+def build_seed_or_source_df(t_df, NaN_filler, col_category, col_index,
         constr_seed_df=True, seed_df=None):
     if constr_seed_df: # Create base dataframe
         if NaN_filler is not None:
             t_df.fillna(NaN_filler, inplace=True)
-
-        # Construct comp_trends_df title
-        bsln = baseline.capitalize() if baseline != 't_zero' else 'T0 = 0'
-        C = ', Data Shifted to {}'.format(bsln)
-        D = ', Data Rescaled (-50, 50) then Shifted to {}'.format(bsln)
-        E = t_df.name.split('in ')[1]
-        if col_index == 0:
-            title = E
-        if col_index == 1:
-            title = E + C
-        if col_index == 2:
-            title = E + D
-        if col_index == 3 and MA_param and not shifted:
-            title = A + E
-        if col_index == 3 and exp_smooth_param and not shifted:
-            title = E + B
-        if col_index == 4 and MA_param and shifted:
-            title = A + E + C
-        if col_index == 4 and exp_smooth_param and shifted:
-            title = E + B + C
-        if col_index == 5 and MA_param and normed:
-            title = A + E + D
-        if col_index == 5 and exp_smooth_param and normed:
-            title = E + B + D
-
-        # col_name = [stage_2.product_name]
-
         comp_trends_df = pd.DataFrame(t_df[t_df.columns[col_index]])
         comp_trends_df.columns = [col_category]
-        comp_trends_df.name = title
 
         return comp_trends_df
 
@@ -981,6 +951,28 @@ def build_seed_or_source_df(t_df, NaN_filler, col_category, col_index, baseline,
             t_df.fillna(NaN_filler, inplace=True)
 
         seed_df[col_category] = t_df.iloc[:,col_index]
+
+def CompTrendsDF_title(t_df, baseline, MA_param, shifted, normed):
+    if MA_param is not None:
+        A = '{}-Week Moving Average of '.format(MA_param)
+    bsln = baseline.capitalize() if baseline != 't_zero' else 'T0 = 0'
+    B = ', Data Shifted to {}'.format(bsln)
+    C = ', Data Rescaled (-50, 50) then Shifted to {}'.format(bsln)
+    D = t_df.name.split('in ')[1]
+    if col_index == 0:
+        title = D
+    if col_index == 1:
+        title = D + B
+    if col_index == 2:
+        title = D + C
+    if col_index == 3 and MA_param and not shifted:
+        title = A + D
+    if col_index == 4 and MA_param and shifted:
+        title = A + D + B
+    if col_index == 5 and MA_param and normed:
+        title = A + D + C
+
+    return title
 
 
 class RankProductsPlaces(object):
