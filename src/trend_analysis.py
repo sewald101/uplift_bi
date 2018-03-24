@@ -753,32 +753,43 @@ def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
 
 
 
-def CompTrendsDF(products, period_wks, end_date, MA_param=None,
+def CompTrendsDF(period_wks, end_date, products=[None], locations=[None],
+                 cities=[None], zipcodes=[None], MA_param=None,
                  shifted=False, normed=False,
                  baseline='t_zero', compute_on_sales=True, NaN_filler=0.0):
-    """Construct DataFrame with time series across multiple products. Default
-    arguments return a DataFrame with time series of raw sales data, NaNs filled
-    with 0.0. Otherwise, assign value to MA_param=.
-    Optionally may assign True to either shifted= or normed= arguments (NOT BOTH).
+    """Construct DataFrame with time series across multiple products or places.
+    Default kwargs return a DataFrame with time series of raw sales data, NaNs
+    filled with 0.0. Otherwise, assign value to MA_param=.
+
+    Optionally may assign bool True to either shifted= or normed= arguments (NOT BOTH).
+
     To preserve discontinuities in data (i.e., NaNs) set NaN_filler to None or
     to a tag value close to zero such as 0.0001
 
     ARGUMENTS:
-     -- products: (list of ints or strings) product names and/or IDs for
-          statistical comparison
      -- period_wks: (int) sampling period in weeks
      -- end_date: (date string: '07/15/2016') date string defining
           end of sampling period.
+
+    SPECIFICATIONS FOR COMPARISON AND FILTERING:
+    Provide one argument for comparison, optionally add a second argument, either
+    a single product or a single place, as a filter. More than two arguments or
+    more than one argument that contains multiple values will produce an error.
+     -- products: (list of ints or strings) list of product names and/or IDs
+     -- locations: (list of ints or strings) list of business names and/or
+          IDs
+     -- cities: (list of strings) list of cities
+     -- zipcodes: (list of 5-digit zipcodes as ints) list of zipcodes
+
+    KEYWORD ARGUMENTS:
      -- MA_param: (int) return dataframe of moving averages; int defines "boxcar"
           window, in weeks, by which to compute moving average
           NOTE: requires value for NaN_filler (!= None)
-     -- exp_smooth_params: (float (0 < f < 1), default=None) return dataframe of
-          exponentially smoothed trends; float provides alpha smoothing factor
      -- shifted: (bool, default=False) shift trend data to t0 = 0
-          NOTE: requires value for NaN_filler
+          NOTE: requires a non-null value for NaN_filler
      -- normed: (bool, default=False) rescale data to feature range (-1, 1)
           then shift data such that t0 = 0.
-          NOTE: requires value for NaN_filler
+          NOTE: requires a non-null value for NaN_filler
      -- baseline: (str, default='t_zero') baseline for shifing data; values:
           * 't_zero' -- shift data by value at t0
           * 'mean' -- shift data to mean = 0
@@ -798,96 +809,118 @@ def CompTrendsDF(products, period_wks, end_date, MA_param=None,
         return None
 
     # Column number to grab specified trend-type from TrendsDF object
-    col_index = column_sel(MA_param, exp_smooth_param, shifted, normed)
+    col_index = column_sel(MA_param, shifted, normed)
 
     # Title elements
     if MA_param:
         A = '{}-Week Moving Average of '.format(MA_param)
         MA_param = [MA_param] # insert single param to list for SalesTrendsDF class
-    if exp_smooth_param:
-        B = ', Exponentially Smoothed (alpha: {})'.format(exp_smooth_param)
-        exp_smooth_param = [exp_smooth_param]
 
     counter = 0
 
-    for product in products:
-        # Construct base dataframe from first product
-        if counter < 1:
-            stage_1 = ImportSalesData(product)
-            stage_1.main()
-            if compute_on_sales:
-                stage_1_ts = stage_1.sales
-            else:
-                stage_1_ts = stage_1.units_sold
+    # From user specifications, set variable for comparison and filter
+    product_place_args = [products, locations, cities, zipcodes]
+    import_type, var_idx = select_import_params(product_place_args)
 
-            stage_2 = SalesTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
-                            exp_smooth_param, normed=True, baseline=baseline,
-                            NaN_filler=NaN_filler)
-            stage_2.main()
-            seed_df = stage_2.trendsDF
+    if import_type == ('A' or 'E'):
+        print (
+        '\nERROR: CONFLICTING VALUES ENTERED OR MISSING AMONG PRODUCTS, LOCATIONS, CITIES, '
+        'AND/OR ZIPCODES ARGUMENTS.\n'
+        'Provide one argument for comparison and (optionally) add a second, either\n '
+        'a single product or a single place, as a filter. No args, more than two args, or\n '
+        'more than one arg that contains multiple values will produce this error.\n'
+             )
+        return
 
-            # if data ends before user-specified end_date, fill remaining data
-            if NaN_filler is not None:
-                seed_df.fillna(NaN_filler, inplace=True)
+    if import_type == 'B': # Single product or place specified
+        category = 'product' if products[0] is not None else 'place'
+        t_df, col_category = import_ala_params(period_wks, end_date,
+            product=products[0], location=locations[0], city=cities[0],
+            zipcode=zipcodes[0], MA_params=MA_param, normed=normed, baseline=baseline,
+            compute_on_sales=compute_on_sales, NaN_allowance=100,
+            return_trendsDF=True, var_type=category)
 
+        comp_trends_df = build_seed_or_source_df(t_df, NaN_filler, col_category,
+                                                 col_index, baseline)
 
-            # Construct comp_trends_df title
-            bsln = baseline.capitalize() if baseline != 't_zero' else 'T0 = 0'
-            C = ', Data Shifted to {}'.format(bsln)
-            D = ', Data Rescaled (-50, 50) then Shifted to {}'.format(bsln)
-            E = seed_df.name.split('in ')[1]
-            if col_index == 0:
-                title = E
-            if col_index == 1:
-                title = E + C
-            if col_index == 2:
-                title = E + D
-            if col_index == 3 and MA_param and not shifted:
-                title = A + E
-            if col_index == 3 and exp_smooth_param and not shifted:
-                title = E + B
-            if col_index == 4 and MA_param and shifted:
-                title = A + E + C
-            if col_index == 4 and exp_smooth_param and shifted:
-                title = E + B + C
-            if col_index == 5 and MA_param and normed:
-                title = A + E + D
-            if col_index == 5 and exp_smooth_param and normed:
-                title = E + B + D
+    if import_type == 'C': # Iterate on multiple products
+        for prod in products:
+            t_df, col_category = import_ala_params(period_wks, end_date,
+                product=prod, location=locations[0], city=cities[0],
+                zipcode=zipcodes[0], MA_params=MA_param, normed=normed, baseline=baseline,
+                compute_on_sales=compute_on_sales, NaN_allowance=100,
+                return_trendsDF=True, var_type='product')
 
-            # col_name = [stage_2.product_name]
+            if counter < 1: # Build the seed (base) df with first product
+                comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
+                                 col_category, col_index, baseline)
+            else: # Add columns with subsequent products
+                build_seed_or_source_df(t_df, NaN_filler, col_category,
+                col_index, baseline, constr_seed_df=False, seed_df=comp_trends_df)
 
-            comp_trends_df = pd.DataFrame(seed_df[seed_df.columns[col_index]])
-            comp_trends_df.columns = [stage_2.product_name]
-            comp_trends_df.name = title
             counter += 1
 
-        else:  # Populate dataframe with remaining product trends
-            stage_1 = ImportSalesData(product)
-            stage_1.main()
-            if compute_on_sales:
-                stage_1_ts = stage_1.sales
-            else:
-                stage_1_ts = stage_1.units_sold
 
-            stage_2 = SalesTrendsDF(stage_1_ts, period_wks, end_date, MA_param,
-                            exp_smooth_param, normed=True, baseline=baseline,
-                            NaN_filler=NaN_filler)
-            stage_2.main()
-            source_df = stage_2.trendsDF#.fillna(0.0, inplace=True)
+    if import_type == 'D': # iterate on places
+        if var_idx == 1:
+            for loc in locations:
+                t_df, col_category = import_ala_params(period_wks, end_date,
+                    product=products[0], location=loc, MA_params=MA_param,
+                    normed=normed, baseline=baseline, return_trendsDF=True,
+                    compute_on_sales=compute_on_sales, NaN_allowance=100,
+                    var_type='place')
 
-            # if data ends before user-specified end_date, fill remaining data
-            if NaN_filler is not None:
-                source_df.fillna(NaN_filler, inplace=True)
+                if counter < 1: # Build the seed df with first place
+                    comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
+                    col_category, col_index, baseline)
+                else: # Add columns with subsequent places
+                    build_seed_or_source_df(t_df, NaN_filler, col_category,
+                    col_index, baseline, constr_seed_df=False,
+                    seed_df=comp_trends_df)
 
-            comp_trends_df[stage_2.product_name] = source_df.iloc[:,col_index]
+                counter += 1
+
+        if var_idx == 2:
+            for city in cities:
+                t_df, col_category = import_ala_params(period_wks, end_date,
+                    product=products[0], city=city, MA_params=MA_param,
+                    normed=normed, baseline=baseline, compute_on_sales=compute_on_sales,
+                    NaN_allowance=100, return_trendsDF=True, var_type='place')
+
+                if counter < 1:
+                    comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
+                    col_category, col_index, baseline)
+                else:
+                    build_seed_or_source_df(t_df, NaN_filler, col_category,
+                    col_index, baseline, constr_seed_df=False,
+                    seed_df=comp_trends_df)
+
+                counter += 1
+
+        if var_idx == 3:
+            for zipcode in zipcodes:
+                t_df, col_category = import_ala_params(period_wks, end_date,
+                    product=products[0], zipcode=zipcode, MA_params=MA_param,
+                    normed=normed, baseline=baseline, return_trendsDF=True,
+                    compute_on_sales=compute_on_sales, NaN_allowance=100,
+                    var_type='place')
+
+                if counter < 1:
+                    comp_trends_df = build_seed_or_source_df(t_df, NaN_filler,
+                    col_category, col_index, baseline)
+                else:
+                    build_seed_or_source_df(t_df, NaN_filler, col_category,
+                    col_index, baseline, constr_seed_df=False,
+                    seed_df=comp_trends_df)
+
+                counter += 1
 
     return comp_trends_df
 
 
-def column_sel(MA_param=None, exp_smooth_param=None, shifted=False, normed=False):
+def column_sel(MA_param=None, shifted=False, normed=False):
     """Return integer for DataFrame column selection"""
-    if MA_param or exp_smooth_param:
+    if MA_param is not None:
         smoothed = True
     else:
         smoothed = False
@@ -904,6 +937,50 @@ def column_sel(MA_param=None, exp_smooth_param=None, shifted=False, normed=False
         return 4
     if smoothed and normed:
         return 5
+
+def build_seed_or_source_df(t_df, NaN_filler, col_category, col_index, baseline,
+        constr_seed_df=True, seed_df=None):
+    if constr_seed_df: # Create base dataframe
+        if NaN_filler is not None:
+            t_df.fillna(NaN_filler, inplace=True)
+
+        # Construct comp_trends_df title
+        bsln = baseline.capitalize() if baseline != 't_zero' else 'T0 = 0'
+        C = ', Data Shifted to {}'.format(bsln)
+        D = ', Data Rescaled (-50, 50) then Shifted to {}'.format(bsln)
+        E = t_df.name.split('in ')[1]
+        if col_index == 0:
+            title = E
+        if col_index == 1:
+            title = E + C
+        if col_index == 2:
+            title = E + D
+        if col_index == 3 and MA_param and not shifted:
+            title = A + E
+        if col_index == 3 and exp_smooth_param and not shifted:
+            title = E + B
+        if col_index == 4 and MA_param and shifted:
+            title = A + E + C
+        if col_index == 4 and exp_smooth_param and shifted:
+            title = E + B + C
+        if col_index == 5 and MA_param and normed:
+            title = A + E + D
+        if col_index == 5 and exp_smooth_param and normed:
+            title = E + B + D
+
+        # col_name = [stage_2.product_name]
+
+        comp_trends_df = pd.DataFrame(t_df[t_df.columns[col_index]])
+        comp_trends_df.columns = [col_category]
+        comp_trends_df.name = title
+
+        return comp_trends_df
+
+    else: # Add new columns to base dataframe
+        if NaN_filler is not None:
+            t_df.fillna(NaN_filler, inplace=True)
+
+        seed_df[col_category] = t_df.iloc[:,col_index]
 
 
 class RankProductsPlaces(object):
@@ -1359,12 +1436,18 @@ def select_import_params(arg_list):
 
 def import_ala_params(period_wks, end_date, product=None, location=None, city=None, zipcode=None,
                       MA_params=None, normed=True, baseline='t_zero', compute_on_sales=True,
-                      NaN_allowance=5):
+                      NaN_allowance=5, return_trendsDF=False, var_type='product'):
     """
     Import sales data per user params in parent function and return the following objects (tup):
-    -- ProductTrends.trend_stats
-    -- ProductTrends.NaNs_ratio
-    -- ProductTrends.trendsDF.name
+    If return_trendsDF set to False (for SalesStatsDF):
+        -- SalesTrends.trend_stats
+        -- SalesTrends.NaNs_ratio
+        -- SalesTrends.trendsDF.name
+
+    Else (for CompTrendsDF):
+        -- SalesTrends.trendsDF
+        -- (str) SalesTrends.product_name (if var_type set to 'product')
+             OR SalesTrends.place_name (if var_type != 'product')
     """
     raw_data = ImportSalesData(product, location, city, zipcode)
     raw_data.main()
@@ -1377,9 +1460,18 @@ def import_ala_params(period_wks, end_date, product=None, location=None, city=No
                                   NaN_filler=0.0)
     trends_data.main()
 
-    return (trends_data.trend_stats,
-            trends_data.NaNs_ratio,
-            trends_data.trendsDF.name)
+    if return_trendsDF:
+        if var_type == 'product':
+            col_name = trends_data.product_name
+        else:
+            col_name = trends_data.place_name
+
+        return trends_data.trendsDF, col_name
+
+    else:
+        return (trends_data.trend_stats,
+                trends_data.NaNs_ratio,
+                trends_data.trendsDF.name)
 
 
 def rank_products(product_stats_df, N_results=None):
