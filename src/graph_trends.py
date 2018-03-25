@@ -265,18 +265,31 @@ Horizontal Bar Chart of Products Ranked by Statistic(s)
 
 """
 
-def HbarRanked(products, end_date, period_wks=10,
-               rank_on_sales=True, MA_param=5, rank_by=['rate'], N_top=3,
+def HbarRanked(period_wks, end_date, products=[None], locations=[None],
+               cities=[None], zipcodes=[None], MA_param=5,
+               rank_on_sales=True, rank_by=['rate'], N_top=3,
                fixed_order=True, NaN_allowance=5, print_rejects=False,
-               fig_height=4, fig_margins=(0.2, 0.8, None),
+               fig_height=10, fig_margins=(0.2, 0.8, None),
                x_buff=0.1, x_in_bar=6, manual_data_label_format=None,
                zero_gap=0.00, txt=None, write_path=None):
     """
     DATA ARGUMENTS:
-     -- products: (list of ints or strings) list of products IDs and/or names for ranking
      -- period_wks: (int, default=10) sample period for time series in weeks
      -- end_date: (date string: '07/15/2016', default=None) date string defining
           end of sampling period. Default uses most recent date in dataset.
+
+    PROVIDE ONE OF THE BELOW OR A COMBINATION OF TWO ARGUMENTS with ONE OF THE
+    TWO CONTAINING ONLY ONE VALUE IN ITS LIST
+     -- products: (list of ints or strings) list of product names and/or IDs for
+          filtering or statistical comparison
+     -- locations: (list of ints or strings) list of retail store names and/or
+          IDs for filtering or statistical comparison
+     -- cities: (list of strings) list of cities for filtering or statistical
+          comparison
+     -- zipcodes: (list of 5-digit zipcodes as ints) list of zipcodes for filtering
+          or statistical comparison
+
+    ADDITIONAL DATA KWARGS
      -- rank_on_sales: (bool, default=True) ranks on sales data; if False,
           ranks on units sold data
      -- MA_param: (int or NoneType) return dataframe of moving averages; int defines "boxcar"
@@ -291,16 +304,16 @@ def HbarRanked(products, end_date, period_wks=10,
           * 'sales' = cumulative sales over period
      -- N_top: (int, default=3) highlight N-top results
      -- fixed_order: (bool, default=True) only rank products in the primary
-          graph and maintain that rank-order in secondary graphs; if False,
-          rank products in each graph
-     -- NaN_allowance: (int from 0 to 100, default=5) max allowable percent of
+          bar graph and maintain that rank-order in secondary graphs; if False,
+          rank products in each bar graph.
+     -- NaN_allowance: (int from 0 to 100, default=5) max allowable percentage of
           NaNs in product ts samples for statistical aggregation; products
-          exceeding allowance are discarded from rankings
+          exceeding allowance are discarded from rankings.
      -- print_rejects: (bool, default=False) If True, print report of products
           rejected for excess null values in sample, with their corresponding
-          percentage of nulls present in sample
+          percentage of nulls in sample.
 
-   GRAPHIC ARGUMENTS
+   GRAPHICS ARGUMENTS
      -- fig_height: (int, default=4) y-dimension of plt.figure
      -- fig_margins: (tuple of floats, default=(0.2, 0.8, None)) variables to adjust figure margins
           via kwargs in plt.subplots_adjust, tuple: (bottom, top, wspace)
@@ -329,7 +342,7 @@ def HbarRanked(products, end_date, period_wks=10,
     """
 
     # Construct dataframe for graph(s)
-    df = HbarData(products, end_date=end_date, period_wks=period_wks,
+    df = HbarData(period_wks, end_date, products, locations, cities, zipcodes,
                rank_on_sales=rank_on_sales, MA=MA_param,
                rank_by=rank_by, fixed_order=fixed_order,
                NaN_allowance=NaN_allowance, print_rejects=print_rejects)

@@ -107,17 +107,27 @@ class ImportSalesData(object):
         if self.product is not None:
             if type(self.product) == str:
                 key = self.product.lower()
-                self.product_id = strain_dict[key]
-                self.product_name = names_formatted[self.product.lower()]
+                try:
+                    self.product_id = strain_dict[key]
+                except KeyError:
+                    return
+                else:
+                    self.product_name = names_formatted[self.product.lower()]
             else:
                 self.product_id = self.product
-                self.product_name = names_formatted[product_name_from_ID(self.product)]
+                try:
+                    self.product_name = names_formatted[product_name_from_ID(self.product)]
+                except KeyError:
+                    return
 
         if self.location is not None:
             if type(self.location) == str:
                 self.location_name = self.location.upper()
                 key = self.location_name
-                self.location_id = locations_dict[key]
+                try:
+                    self.location_id = locations_dict[key]
+                except KeyError:
+                    return
             else:
                 self.location_name = locations_name_from_ID(self.location)
                 self.location_id = self.location
@@ -206,7 +216,7 @@ class ImportSalesData(object):
             # Construct continuous time series even if data is discontinuous
             self.ts_start, self.ts_end = stage_2.index[0], stage_2.index[-1]
         except IndexError:
-            print "\nERROR: NO SALES DATA FOR THE FILTERS SPECIFIED\n"
+            print "\nERROR: NO SALES DATA FOR THE FILTERS SPECIFIED"
             return None
         else:
             if self.upsample: # Construct daily DF from weekly aggregated data
@@ -317,22 +327,26 @@ class SalesTrendsDF(object):
         self.product_ID = None
         self.place_name = None
         self.place_ID = None
-        self.sales_col_name = self.ts.name.split(' -- Daily ')[-1]
         self.ts_sample = None
         self.trendsDF = None
         self.trend_stats = OrderedDict()
         self.NaNs_ratio = None
-
+        try:
+            self.sales_col_name = self.ts.name.split(' -- Daily ')[-1]
+        except AttributeError:
+            pass
 
     def main(self):
-        self._constuct_basic_trendsDF()
+        if self.ts is not None:
+            self._constuct_basic_trendsDF()
 
-        if self.NaN_filler is not None:
-            if self.MA_params:
-                self._compute_rolling_averages()
+            if self.NaN_filler is not None:
+                if self.MA_params:
+                    self._compute_rolling_averages()
 
-        self.aggregate_stats()
-
+            self.aggregate_stats()
+        else:
+            print "\nERROR: Initialization ts is NoneType."
 
     def _constuct_basic_trendsDF(self):
         """DF with sales over period"""
@@ -618,16 +632,20 @@ def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
             product=products[0], location=locations[0], city=cities[0],
             zipcode=zipcodes[0], MA_params=MA_params, normed=normed, baseline=baseline,
             compute_on_sales=compute_on_sales, NaN_allowance=NaN_allowance)
-        # If null vals in sample exceed allowance threshold, dump product or place
-        # into rejected dict and exclude from output DF
-        if NaN_ratio > NaN_allowance / 100.:
-            if products[0] is not None:
-                rejected[stats['product_name']] = NaN_ratio
+
+        if stats is not None:
+            # If null vals in sample exceed allowance threshold, dump product or place
+            # into rejected dict and exclude from output DF
+            if NaN_ratio > NaN_allowance / 100.:
+                if products[0] is not None:
+                    rejected[stats['product_name']] = NaN_ratio
+                else:
+                    rejected[stats['place_name']] = NaN_ratio
             else:
-                rejected[stats['place_name']] = NaN_ratio
+                data.append(stats)
+                df_name = name
         else:
-            data.append(stats)
-            df_name = name
+            return
 
     if import_type == 'C': # Iterate on products
         for prod in products:
@@ -636,30 +654,33 @@ def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
                 zipcode=zipcodes[0], MA_params=MA_params, normed=normed, baseline=baseline,
                 compute_on_sales=compute_on_sales, NaN_allowance=NaN_allowance)
 
-            if NaN_ratio > NaN_allowance / 100.:
-                rejected[stats['product_name']] = NaN_ratio
+            if stats is None:
+                continue
             else:
-                data.append(stats)
-
-            if counter < 1: # first loop, grab name for output DF
-                if locations[0] is not None:
-                    df_name = ('Product Comparison, '
-                               + name.split(', ')[-1]
-                               + ', Business: {}'.format(locations[0].upper())
-                               )
-                elif cities[0] is not None:
-                    df_name = ('Product Comparison, '
-                               + name.split(', ')[-1]
-                               + ', City: {}'.format(cities[0].upper())
-                               )
-                elif zipcodes[0] is not None:
-                    df_name = ('Product Comparison, '
-                               + name.split(', ')[-1]
-                               + ', Zipcode: {}'.format(zipcodes[0])
-                               )
+                if NaN_ratio > NaN_allowance / 100.:
+                    rejected[stats['product_name']] = NaN_ratio
                 else:
-                    df_name = 'Product Comparison, ' + name.split(', ')[-1]
-            counter += 1
+                    data.append(stats)
+
+                if counter < 1: # first loop, grab name for output DF
+                    if locations[0] is not None:
+                        df_name = ('Product Comparison, '
+                                   + name.split(', ')[-1]
+                                   + ', Business: {}'.format(locations[0].upper())
+                                   )
+                    elif cities[0] is not None:
+                        df_name = ('Product Comparison, '
+                                   + name.split(', ')[-1]
+                                   + ', City: {}'.format(cities[0].upper())
+                                   )
+                    elif zipcodes[0] is not None:
+                        df_name = ('Product Comparison, '
+                                   + name.split(', ')[-1]
+                                   + ', Zipcode: {}'.format(zipcodes[0])
+                                   )
+                    else:
+                        df_name = 'Product Comparison, ' + name.split(', ')[-1]
+                counter += 1
 
     if import_type == 'D': # iterate on a place
         if var_index == 1:
@@ -668,21 +689,23 @@ def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
                     product=products[0], location=loc, MA_params=MA_params,
                     normed=normed, baseline=baseline,
                     compute_on_sales=compute_on_sales, NaN_allowance=NaN_allowance)
-
-                if NaN_ratio > NaN_allowance / 100.:
-                    rejected[stats['place_name']] = NaN_ratio
+                if stats is None:
+                    continue
                 else:
-                    data.append(stats)
-
-                if counter < 1:
-                    if products[0] is None:
-                        df_name = 'Comparison by Business, ' + name.split(', ')[-1]
+                    if NaN_ratio > NaN_allowance / 100.:
+                        rejected[stats['place_name']] = NaN_ratio
                     else:
-                        df_name = (name.split(', ')[0]
-                                   + ', Comparison by Business, '
-                                   + name.split(', ')[-1]
-                                   )
-                counter += 1
+                        data.append(stats)
+
+                    if counter < 1:
+                        if products[0] is None:
+                            df_name = 'Comparison by Business, ' + name.split(', ')[-1]
+                        else:
+                            df_name = (name.split(', ')[0]
+                                       + ', Comparison by Business, '
+                                       + name.split(', ')[-1]
+                                       )
+                    counter += 1
 
         if var_index == 2:
             for city in cities:
@@ -690,21 +713,23 @@ def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
                     product=products[0], city=city, MA_params=MA_params, normed=normed,
                     baseline=baseline, compute_on_sales=compute_on_sales,
                     NaN_allowance=NaN_allowance)
-
-                if NaN_ratio > NaN_allowance / 100.:
-                    rejected[stats['place_name']] = NaN_ratio
+                if stats is None:
+                    continue
                 else:
-                    data.append(stats)
-
-                if counter < 1:
-                    if products[0] is None:
-                        df_name = 'Comparison by City, ' + name.split(', ')[-1]
+                    if NaN_ratio > NaN_allowance / 100.:
+                        rejected[stats['place_name']] = NaN_ratio
                     else:
-                        df_name = (name.split(', ')[0]
-                                   + ', Comparison by City, '
-                                   + name.split(', ')[-1]
-                                   )
-                counter += 1
+                        data.append(stats)
+
+                    if counter < 1:
+                        if products[0] is None:
+                            df_name = 'Comparison by City, ' + name.split(', ')[-1]
+                        else:
+                            df_name = (name.split(', ')[0]
+                                       + ', Comparison by City, '
+                                       + name.split(', ')[-1]
+                                       )
+                    counter += 1
 
         if var_index == 3:
             for zipcode in zipcodes:
@@ -712,21 +737,23 @@ def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
                     product=products[0], zipcode=zipcode, MA_params=MA_params,
                     normed=normed, baseline=baseline,
                     compute_on_sales=compute_on_sales, NaN_allowance=NaN_allowance)
-
-                if NaN_ratio > NaN_allowance / 100.:
-                    rejected[stats['place_name']] = NaN_ratio
+                if stats is None:
+                    continue
                 else:
-                    data.append(stats)
-
-                if counter < 1:
-                    if products[0] is None:
-                        df_name = 'Comparison by Zipcode, ' + name.split(', ')[-1]
+                    if NaN_ratio > NaN_allowance / 100.:
+                        rejected[stats['place_name']] = NaN_ratio
                     else:
-                        df_name = (name.split(', ')[0]
-                                   + ', Comparison by Zipcode, '
-                                   + name.split(', ')[-1]
-                                   )
-                counter += 1
+                        data.append(stats)
+
+                    if counter < 1:
+                        if products[0] is None:
+                            df_name = 'Comparison by Zipcode, ' + name.split(', ')[-1]
+                        else:
+                            df_name = (name.split(', ')[0]
+                                       + ', Comparison by Zipcode, '
+                                       + name.split(', ')[-1]
+                                       )
+                    counter += 1
 
     try:
         product_stats_df = pd.DataFrame(data, columns=data[0].keys())
@@ -827,7 +854,7 @@ def CompTrendsDF(period_wks, end_date, products=[None], locations=[None],
         '       CITIES, AND/OR ZIPCODES.\n\n'
         'Provide one argument for comparison and (optionally) add a second argument\n'
         'as a filter. The filter may be a single product or a single place.\n'
-        'Check that NO MORE THAN ONE ARGUMENT contains multiple values.\n'
+        'Check that NOT MORE THAN ONE ARGUMENT contains multiple values.\n'
              )
         return
 
@@ -944,7 +971,7 @@ def CompTrendsDF(period_wks, end_date, products=[None], locations=[None],
         '       CITIES, AND/OR ZIPCODES.\n\n'
         'Provide one argument for comparison and (optionally) add a second argument\n'
         'as a filter. The filter may be a single product or a single place.\n'
-        'Check that NO MORE THAN ONE ARGUMENT contains multiple values.\n'
+        'Check that NOT MORE THAN ONE ARGUMENT contains multiple values.\n'
              )
         return
 
@@ -1145,32 +1172,44 @@ GENERATE DATA FOR BAR GRAPHS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
-def HbarData(product_IDs, end_date, period_wks=10,
-               rank_on_sales=True, MA=5, NaN_allowance=5, print_rejects=False,
-               rank_by=['rate'], fixed_order=True):
+def HbarData(period_wks, end_date, products=[None], locations=[None],
+             cities=[None], zipcodes=[None], MA=5,
+             rank_on_sales=True, NaN_allowance=5, print_rejects=False,
+             rank_by=['sales'], fixed_order=True):
     """Return a dataframe configured for custom plotting in HbarRanked function
     Called within HBarRanked in graph_trends.py. See documentation there for
     further details."""
 
-    boxcar = [MA] if MA else None
-    prod_stats = SalesStatsDF(product_IDs, period_wks, end_date,
-                MA_params=boxcar, compute_on_sales=rank_on_sales,
+    boxcar = [MA] if MA is not None else None
+
+    product_place_args = [products, locations, cities, zipcodes]
+    import_type, var_index = select_import_params(product_place_args)
+
+    if import_type == 'C': # ranking products
+        drop_cols = ['product_id', 'place_name', 'place_id']
+        append_col = 'product_name'
+    if import_type == 'D': # ranking places
+        drop_cols = ['product_id', 'product_name', 'place_id']
+        append_col = 'place_name'
+
+    prod_stats = SalesStatsDF(period_wks, end_date, products, locations,
+                cities, zipcodes, MA_params=boxcar, compute_on_sales=rank_on_sales,
                 NaN_allowance=NaN_allowance, print_rejects=print_rejects)
-    if MA:
+    if MA is not None:
         base_name = prod_stats.name + ' -- {}-Week Moving Average'.format(MA)
     else:
         base_name = prod_stats.name + ' -- '
 
 
-    if len(rank_by) < 2 or fixed_order: # just need the RankProductsPlaces.results object
-        if len(rank_by) < 2:
+    if len(rank_by) == 1 or fixed_order: # just need the RankProductsPlaces.results object
+        if len(rank_by) == 1:
             rank_1 = RankProductsPlaces(prod_stats)
-            if MA:
+            if MA is not None:
                 rank_1.main(stat=rank_by[0])
             else:
                 rank_1.main(smoothed=False, stat=rank_by[0])
             data = rank_1.results
-            data.drop(['product_id'], axis=1, inplace=True)
+            data.drop(drop_cols, axis=1, inplace=True)
 
         else:
             rank_1 = RankProductsPlaces(prod_stats)
@@ -1179,7 +1218,7 @@ def HbarData(product_IDs, end_date, period_wks=10,
             df_cols = all_data.columns
             cols = []
             for rank_stat in rank_by:
-                cols.append('product_name')
+                cols.append(append_col)
                 cols.append(grab_column(stat=rank_stat, smoothed=MA))
 
             data = all_data[cols]
@@ -1197,7 +1236,7 @@ def HbarData(product_IDs, end_date, period_wks=10,
                 data['Ranking By {}'.format(rank_stat)] = next_ranked.iloc[:,0].values
                 data[next_ranked.columns[-1]] = next_ranked.iloc[:,-1].values
 
-            data.drop(['product_id'], axis=1, inplace=True)
+            data.drop(drop_cols, axis=1, inplace=True)
 
     data = data[::-1] # reverse row order for matplotlib bar graphing
     data.name = base_name
@@ -1492,38 +1531,49 @@ def import_ala_params(period_wks, end_date, product=None, location=None, city=No
     """
     raw_data = ImportSalesData(product, location, city, zipcode)
     raw_data.main()
-    if compute_on_sales:
-        ts = raw_data.sales
-    else:
-        ts = raw_data.units_sold
-
-    trends_data = SalesTrendsDF(ts, period_wks, end_date, MA_params, normed, baseline,
-                                  NaN_filler=0.0)
-    trends_data.main()
-
-    if return_trendsDF:
-        if var_type == 'product':
-            var_name = trends_data.product_name
-            filter_name = \
-            None if trends_data.place_name is None else trends_data.place_name
-            filter_ID = \
-            None if trends_data.place_ID is None else trends_data.place_ID
+    if raw_data.product_df is not None:
+        if compute_on_sales:
+            ts = raw_data.sales
         else:
-            var_name = trends_data.place_name
-            filter_name = \
-            None if trends_data.product_name is None else trends_data.product_name
-            filter_ID = \
-            None if trends_data.product_ID is None else trends_data.product_ID
+            ts = raw_data.units_sold
 
-        return (trends_data.trendsDF,
-                var_name,
-                filter_name,
-                filter_ID)
+        trends_data = SalesTrendsDF(ts, period_wks, end_date, MA_params, normed, baseline,
+                                      NaN_filler=0.0)
+        trends_data.main()
+
+        if return_trendsDF:
+            if var_type == 'product':
+                var_name = trends_data.product_name
+                filter_name = \
+                None if trends_data.place_name is None else trends_data.place_name
+                filter_ID = \
+                None if trends_data.place_ID is None else trends_data.place_ID
+            else:
+                var_name = trends_data.place_name
+                filter_name = \
+                None if trends_data.product_name is None else trends_data.product_name
+                filter_ID = \
+                None if trends_data.product_ID is None else trends_data.product_ID
+
+            return (trends_data.trendsDF,
+                    var_name,
+                    filter_name,
+                    filter_ID)
+
+        else:
+            return (trends_data.trend_stats,
+                    trends_data.NaNs_ratio,
+                    trends_data.trendsDF.name)
 
     else:
-        return (trends_data.trend_stats,
-                trends_data.NaNs_ratio,
-                trends_data.trendsDF.name)
+        params_lst = [product, location, city, zipcode]
+        print ('ERROR: Invalid entry, no sales data associated with this combination\n'
+               'of values: {}\n'.format(params_lst)
+               )
+        if not return_trendsDF:
+            return None, None, None
+        else:
+            return None, None, None, None
 
 
 def rank_products(product_stats_df, N_results=None):
