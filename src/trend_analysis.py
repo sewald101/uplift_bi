@@ -1470,6 +1470,68 @@ SUPPORTING AND STAND-ALONE FUNCTIONS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
+def biz_lookup(conn_str, cities=None, zipcodes=None):
+    """
+    Return a list of IDs (ints) for all businesses in either:
+     -- A city (str) or list of cities, OR
+     -- A zipcode (5-digit int) or list of zipcodes
+    """
+    if cities is not None and zipcodes is not None:
+        print "\nERROR: Enter value(s) for city OR zip; NOT BOTH."
+        return
+
+    conn = create_engine(conn_str)
+    biz_list = []
+
+    if type(cities) != list:
+        cities = [cities]
+    if type(zipcodes) != list:
+        zipcodes = [zipcodes]
+
+    if cities[0] is not None:
+        A = """
+            SELECT DISTINCT(locs.name)
+            FROM locations locs
+            JOIN weekly_sales ws
+            ON locs.wa_location_id = ws.location_id
+            WHERE locs.city = '{}'
+            """.format(cities[0].upper())
+
+        B = ''
+
+        if len(cities) > 1:
+            for city in cities[1:]:
+                B += '\nOR locs.city = {}'.format(city)
+
+        C = ';'
+
+        query_by_city = A + B + C
+        results = conn.execute(query_by_city)
+        for shop in results:
+            biz_list.append(locations_dict[shop[0]])
+    else:
+        A = """
+            SELECT DISTINCT(location_id)
+            FROM weekly_sales
+            WHERE zip = '{}'
+            """.format(zipcodes[0])
+
+        B = ''
+
+        if len(zipcodes) > 1:
+            for zipcode in zipcodes[1:]:
+                B += '\nOR zip = {}'.format(zipcode)
+
+        C = ';'
+
+        query_by_zip = A + B + C
+        results = conn.execute(query_by_zip)
+        for shop in results:
+            biz_list.append(shop[0])
+
+    return biz_list
+
+
 def select_import_params(arg_list):
     """
     Return tuple (str, int or None) containing ImportSalesData initialization configs with
