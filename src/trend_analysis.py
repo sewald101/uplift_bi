@@ -1135,10 +1135,14 @@ class RankProductsPlaces(object):
                 self.ranked_df = ranked[output_cols][:self.N_results]
                 self.ranked_products = self.ranked_df['product_id'].values
                 self.results = self.ranked_df.iloc[:,:5]
+                self.results.drop(['product_id' ,'place_name' ,'place_id'],
+                                    axis=1, inplace=True)
             else: # if ranking by place...
                 self.ranked_df = ranked[output_cols][:self.N_results]
                 self.ranked_places = self.ranked_df['place_name'].values
                 self.results = self.ranked_df.iloc[:,:5]
+                self.results.drop(['product_name', 'product_id', 'place_id'],
+                                    axis=1, inplace=True)
 
         else:
             # if ranking by product...
@@ -1146,11 +1150,15 @@ class RankProductsPlaces(object):
                 self.ranked_df = ranked[output_cols]
                 self.ranked_products = self.ranked_df['product_id'].values
                 self.results = self.ranked_df.iloc[:,:5]
+                self.results.drop(['product_id' ,'place_name' ,'place_id'],
+                                    axis=1, inplace=True)
             else: # if ranking by place...
                 self.ranked_df = ranked[output_cols]
                 self.ranked_places = self.ranked_df['place_name'].values
                 self.results = self.ranked_df.iloc[:,:5]
-
+                self.results.drop(['product_name', 'product_id', 'place_id'],
+                                    axis=1, inplace=True)
+                                    
         self.results.name = self.sales_stats_df.name
         self.ranked_df.name = self.sales_stats_df.name + \
                 ', Ranked by {}'.format(stat_col)
@@ -1178,7 +1186,46 @@ def HbarData(period_wks, end_date, products=[None], locations=[None],
              rank_by=['sales'], fixed_order=True):
     """Return a dataframe configured for custom plotting in HbarRanked function
     Called within HBarRanked in graph_trends.py. See documentation there for
-    further details."""
+    further details.
+
+    ARGUMENTS
+     -- period_wks: (int, default=10) sample period for time series in weeks
+     -- end_date: (date string: '07/15/2016', default=None) date string defining
+          end of sampling period. Default uses most recent date in dataset.
+
+    PROVIDE ONE OF THE BELOW OR A COMBINATION OF TWO ARGUMENTS with ONE OF THE
+    TWO CONTAINING ONLY ONE VALUE IN ITS LIST
+     -- products: (list of ints or strings) list of product names and/or IDs for
+          filtering or statistical comparison
+     -- locations: (list of ints or strings) list of retail store names and/or
+          IDs for filtering or statistical comparison
+     -- cities: (list of strings) list of cities for filtering or statistical
+          comparison
+     -- zipcodes: (list of 5-digit zipcodes as ints) list of zipcodes for filtering
+          or statistical comparison
+
+    ADDITIONAL DATA KWARGS
+     -- rank_on_sales: (bool, default=True) ranks on sales data; if False,
+          ranks on units sold data
+     -- MA_param: (int or NoneType) return dataframe of moving averages; int defines "boxcar"
+          window, in weeks, by which to compute moving average; if None, computes
+          on raw trend data.
+     -- rank_by: (list of strings, default=['rate']) select statistic
+          by which to rank products in the primary and optional secondary
+          graphs in order of statistic. Values:
+          * 'sales' = cumulative sales over period
+          * 'gain' = uniform weekly gain or loss over period
+          * 'rate' = growth rate index for products with data
+              normalized (rescaled -100, 100) for sales volumes
+     -- fixed_order: (bool, default=True) only rank products in the primary
+          bar graph and maintain that rank-order in secondary graphs; if False,
+          rank products in each bar graph.
+     -- NaN_allowance: (int from 0 to 100, default=5) max allowable percentage of
+          NaNs in product ts samples for statistical aggregation; products
+          exceeding allowance are discarded from rankings.
+     -- print_rejects: (bool, default=False) If True, print report of products
+          rejected for excess null values in sample, with their corresponding
+          percentage of nulls in sample."""
 
     boxcar = [MA] if MA is not None else None
 
