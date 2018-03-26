@@ -94,9 +94,10 @@ Line Plot of Products over Uniform Trend Parameters
 
 """
 
-def PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
+def PlotCompTrends(df=None, period_wks=10, end_date=None, products=[None],
+                locations=[None], cities=[None], zipcodes=[None],
                 MA_param=5, shifted=False, normed=False, baseline='t_zero',
-                compute_on_sales=True,
+                compute_on_sales=True, NaN_filler=0.0,
                 fig_height=12, palette=Greens_9, fig_margins=(0.1, 0.75),
                 reverse_palette=True, max_yticks=10, trunc_yticks=False,
                 legend=False, txt=None, write_path=None):
@@ -146,10 +147,12 @@ def PlotCompTrends(df=None, products=None, period_wks=10, end_date=None,
     """
 
     if df is None:
-        df = CompTrendsDF(products=products, period_wks=period_wks,
-                          end_date=end_date, MA_param=MA_param,
-                          shifted=shifted, normed=normed,
-                          baseline=baseline, compute_on_sales=compute_on_sales
+        df = CompTrendsDF(period_wks=period_wks, end_date=end_date,
+                          products=products, locations=locations,
+                          cities=cities, zipcodes=zipcodes,
+                          MA_param=MA_param, shifted=shifted, normed=normed,
+                          baseline=baseline, compute_on_sales=compute_on_sales,
+                          NaN_filler=NaN_filler
                           )
 
     fig, ax = plt.subplots(figsize=(12,fig_height))
@@ -265,7 +268,8 @@ Horizontal Bar Chart of Products Ranked by Statistic(s)
 
 """
 
-def HbarRanked(period_wks, end_date, products=[None], locations=[None],
+def HbarRanked(df=None, period_wks=None, end_date=None,
+               products=[None], locations=[None],
                cities=[None], zipcodes=[None], MA_param=5,
                rank_on_sales=True, rank_by=['rate'], N_top=3,
                fixed_order=True, NaN_allowance=5, print_rejects=False,
@@ -274,6 +278,9 @@ def HbarRanked(period_wks, end_date, products=[None], locations=[None],
                zero_gap=0.00, txt=None, write_path=None):
     """
     DATA ARGUMENTS:
+     -- df: (None or Dataframe) HbarData object
+
+    IF df=None, PROVIDE THE FOLLOWING DATA ARGUMENTS
      -- period_wks: (int, default=10) sample period for time series in weeks
      -- end_date: (date string: '07/15/2016', default=None) date string defining
           end of sampling period. Default uses most recent date in dataset.
@@ -342,10 +349,14 @@ def HbarRanked(period_wks, end_date, products=[None], locations=[None],
     """
 
     # Construct dataframe for graph(s)
-    df = HbarData(period_wks, end_date, products, locations, cities, zipcodes,
-               rank_on_sales=rank_on_sales, MA=MA_param,
-               rank_by=rank_by, fixed_order=fixed_order,
-               NaN_allowance=NaN_allowance, print_rejects=print_rejects)
+    if type(rank_by) == str: # In case user forgets to enclose arg in list
+        rank_by = [rank_by]
+
+    if df is None:
+        df = HbarData(period_wks, end_date, products, locations, cities, zipcodes,
+                   rank_on_sales=rank_on_sales, MA=MA_param,
+                   rank_by=rank_by, fixed_order=fixed_order,
+                   NaN_allowance=NaN_allowance, print_rejects=print_rejects)
 
     df_cols = df.columns
 
