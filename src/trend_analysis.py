@@ -1315,7 +1315,8 @@ GENERATE BEST-SELLER DATA
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
-def BestSellerData(products, end_date, period_wks=10, MA_param=5, NaN_allowance=5,
+def BestSellerData(period_wks, end_date, products=[None], locations=[None],
+                   cities=[None], zipcodes=[None], MA_param=5, NaN_allowance=5,
                    print_rejects=False, compute_on_sales=True, N_periods=10,
                    freq='7D', rank_by='rate'):
     """Return objects for graphing in graph_trends.PlotBestSellers():
@@ -1325,11 +1326,22 @@ def BestSellerData(products, end_date, period_wks=10, MA_param=5, NaN_allowance=
 
 
     ARGUMENTS:
-     -- products: (list of ints or strings) product names and/or IDs for
-          statistical comparison
+     -- period_wks: (int, default=10) length of sampling periods in weeks
      -- end_date: (date string of form 'MM/DD/YYYY', default=None) end_date of most recent
          ranking period
-     -- period_wks: (int, default=10) length of sampling periods in weeks
+
+    PROVIDE ONE OF THE BELOW OR A COMBINATION OF TWO ARGUMENTS with ONE OF THE
+    TWO CONTAINING ONLY ONE VALUE IN ITS LIST
+     -- products: (list of ints or strings) list of product names and/or IDs for
+          filtering or statistical comparison
+     -- locations: (list of ints or strings) list of retail store names and/or
+          IDs for filtering or statistical comparison
+     -- cities: (list of strings) list of cities for filtering or statistical
+          comparison
+     -- zipcodes: (list of 5-digit zipcodes as ints) list of zipcodes for filtering
+          or statistical comparison
+
+    OPTIONAL:
      -- MA_param: (int or NoneType, default=5) rolling "boxcar" window, in weeks, by which to
           compute moving averages; None: ranks on non-smoothed (raw) trend data
      -- NaN_allowance: (int or float from 0 to 100, default=5) max allowable
@@ -1375,8 +1387,10 @@ def BestSellerData(products, end_date, period_wks=10, MA_param=5, NaN_allowance=
         else: pass
 
         # Compute stats on products for one test period at a time
-        if MA_param:
-            psdf, rej = SalesStatsDF(products, period_wks=period_wks, end_date=end_d,
+        if MA_param is not None:
+            psdf, rej = SalesStatsDF(period_wks=period_wks, end_date=end_d,
+                    products=products, locations=locations, cities=cities,
+                    zipcodes=zipcodes,
                     MA_params=[MA_param], NaN_allowance=NaN_allowance,
                     print_rejects=print_rejects, return_rejects=True,
                     normed=True, compute_on_sales=compute_on_sales
@@ -1390,7 +1404,9 @@ def BestSellerData(products, end_date, period_wks=10, MA_param=5, NaN_allowance=
             else: pass
 
         else: # if no moving-avg window specified . . .
-            psdf, rej = SalesStatsDF(products, period_wks=period_wks, end_date=end_d,
+            psdf, rej = SalesStatsDF(period_wks=period_wks, end_date=end_d,
+                    products=products, locations=locations, cities=cities,
+                    zipcodes=zipcodes,
                     NaN_allowance=NaN_allowance, print_rejects=print_rejects,
                     return_rejects=True, normed=True,
                     compute_on_sales=compute_on_sales
@@ -1403,12 +1419,13 @@ def BestSellerData(products, end_date, period_wks=10, MA_param=5, NaN_allowance=
             else: pass
 
         ranked = RankProductsPlaces(psdf)
-        if MA_param:
+        if MA_param is not None:
             ranked.main(smoothed=True, stat=rank_by)
         else:
             ranked.main(smoothed=False, stat=rank_by)
         data_A[end_d] = ranked.ranked_IDs
 
+"""STOPPED HERE ON MONDAY 4/16. NEED TO SELECT WHICH VARIABLE TO ITERATE ON."""
     # Reconfigure data_A into a dictionary (data_B) of keys=products, vals=list
     # of a product's rankings over the series of comparison periods
     data_B = OrderedDict()
