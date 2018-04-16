@@ -305,10 +305,10 @@ def HbarRanked(df=None, period_wks=None, end_date=None,
      -- rank_by: (list of strings, default=['rate']) select statistic
           by which to rank products in the primary and optional secondary
           graphs in order of statistic. Values:
+          * 'sales' = cumulative sales over period
+          * 'gain' = uniform weekly gain or loss over period
           * 'rate' = growth rate index for products with data
               normalized (rescaled -100, 100) for sales volumes
-          * 'gain' = uniform weekly gain or loss over period
-          * 'sales' = cumulative sales over period
      -- N_top: (int, default=3) highlight N-top results
      -- fixed_order: (bool, default=True) only rank products in the primary
           bar graph and maintain that rank-order in secondary graphs; if False,
@@ -329,7 +329,8 @@ def HbarRanked(df=None, period_wks=None, end_date=None,
           by which to set left and right margins of plot around bars
      -- x_in_bar: (int or float, default=6) divisor of maximum abs x-value used to set
           threshold for whether each value label appears inside or outside of its bar.
-          Lower number means label more likely to appear outside of bar.
+          Lower number means label more likely to appear outside of bar. Set to
+          1 for all data to appear outside of bars.
      -- manual_data_label_format: (tuple, default=None) override default x_label
           formatting with the following ordered values in a tuple:
           * format as currency (bool)
@@ -352,17 +353,23 @@ def HbarRanked(df=None, period_wks=None, end_date=None,
     if type(rank_by) == str: # In case user forgets to enclose arg in list
         rank_by = [rank_by]
 
-    if df is None:
+    if df is None: # if no dataframe provided, create one
         df = HbarData(period_wks, end_date, products, locations, cities, zipcodes,
                    rank_on_sales=rank_on_sales, MA=MA_param,
                    rank_by=rank_by, fixed_order=fixed_order,
                    NaN_allowance=NaN_allowance, print_rejects=print_rejects)
+        num_of_axes = len(rank_by)
+
+    else: # if dataframe provided, set these variables for iteration
+        num_of_axes = len(df.columns) / 2
+        rank_by = range(num_of_axes)
 
     df_cols = df.columns
 
+
     # Configure subplots
     share_bool = 'all' if fixed_order else 'none'
-    fig, axs = plt.subplots(1, len(rank_by), squeeze=False, sharey=share_bool,
+    fig, axs = plt.subplots(1, num_of_axes, squeeze=False, sharey=share_bool,
                             figsize=(8*len(rank_by), fig_height),
                             )
 

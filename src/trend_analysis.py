@@ -1158,7 +1158,7 @@ class RankProductsPlaces(object):
                 self.results = self.ranked_df.iloc[:,:5]
                 self.results.drop(['product_name', 'product_id', 'place_id'],
                                     axis=1, inplace=True)
-                                    
+
         self.results.name = self.sales_stats_df.name
         self.ranked_df.name = self.sales_stats_df.name + \
                 ', Ranked by {}'.format(stat_col)
@@ -1242,6 +1242,7 @@ def HbarData(period_wks, end_date, products=[None], locations=[None],
     prod_stats = SalesStatsDF(period_wks, end_date, products, locations,
                 cities, zipcodes, MA_params=boxcar, compute_on_sales=rank_on_sales,
                 NaN_allowance=NaN_allowance, print_rejects=print_rejects)
+
     if MA is not None:
         base_name = prod_stats.name + ' -- {}-Week Moving Average'.format(MA)
     else:
@@ -1283,7 +1284,7 @@ def HbarData(period_wks, end_date, products=[None], locations=[None],
                 data['Ranking By {}'.format(rank_stat)] = next_ranked.iloc[:,0].values
                 data[next_ranked.columns[-1]] = next_ranked.iloc[:,-1].values
 
-            data.drop(drop_cols, axis=1, inplace=True)
+            # data.drop(drop_cols, axis=1, inplace=True)
 
     data = data[::-1] # reverse row order for matplotlib bar graphing
     data.name = base_name
@@ -1596,11 +1597,11 @@ def select_import_params(arg_list):
     E = ERROR_1: Conflicing values contained in arguments
     """
 
-    # find variable; the product or geo-spec for comparison via iteration
+    # find variable; the product or place category for comparison via iteration
     mask_1 = lambda x: len(x) > 1
     find_var = map(mask_1, arg_list)
 
-    # find args with user-specified values
+    # find arguments with user-specified values
     mask_2 = lambda x: x[0] is not None
     find_args = map(mask_2, arg_list)
 

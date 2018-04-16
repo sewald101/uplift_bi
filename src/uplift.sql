@@ -367,3 +367,23 @@ FROM product_skus
 WHERE generic_strain_id BETWEEN 1 AND 15
 GROUP BY strain_display_name, generic_strain_id
 ORDER BY generic_strain_id;
+
+/* IDENTIFY STRAY LOCATION IDS*/
+select wa_location_id, name, address1, city, retail
+from locations
+where wa_location_id = 1823
+or wa_location_id = 1961
+or wa_location_id = 755
+or wa_location_id = 1625
+or wa_location_id = 1717
+or wa_location_id = 357
+or wa_location_id = 1084
+or wa_location_id = 2077
+or wa_location_id = 612
+or wa_location_id = 1915
+or wa_location_id = 1679
+or wa_location_id = 719
+or wa_location_id = 602
+OR wa_location_id = 738
+ORDER BY wa_location_id
+;
