@@ -558,11 +558,11 @@ class SalesTrendsDF(object):
 
 
 def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
-                   cities=[None], zipcodes=[None], MA_params=None, normed=True,
+                   cities=[None], zipcodes=[None], MA_params=[5], normed=True,
                    baseline='t_zero', compute_on_sales=True, NaN_allowance=5,
                    print_rejects=False, return_rejects=False):
-    """Construct DataFrame showing comparative sales stats among multiple products.
-    See output DataFrame.name attribute for title.
+    """Construct DataFrame showing comparative sales stats among multiple products
+    or places. See output DataFrame.name attribute for title.
 
     ARGUMENTS:
      -- period_wks: (int) sampling period in weeks
@@ -581,7 +581,7 @@ def SalesStatsDF(period_wks, end_date, products=[None], locations=[None],
           or statistical comparison
 
      OPTIONAL:
-     -- MA_params: (list of ints, default=None) one or more rolling "boxcar"
+     -- MA_params: (list of ints, default=5) one or more rolling "boxcar"
           windows, in weeks, by which to compute moving averages
      -- normed: (bool, default=True) add a column for each rolling average or expon.
           smoothed column that computes on data that has been rescaled (-1, 1)
@@ -1068,8 +1068,9 @@ class RankProductsPlaces(object):
               -  None = prompts user for statistic from menu
 
     ATTRIBUTES:
-     -- results: pandas DataFrame of products ranked by selected statistic
-     -- ranked_IDs: numpy array of ranked product IDs
+     -- results: pandas DataFrame of products or places ranked by selected statistic
+     -- ranked_products: numpy array of ranked product IDs
+     -- ranked_places: numpy array of ranked places or place IDs
      -- ranked_df: same as RankProducts.results but including all other statistics
 
     """
@@ -1256,7 +1257,7 @@ def HbarData(period_wks, end_date, products=[None], locations=[None],
                 rank_1.main(stat=rank_by[0])
             else:
                 rank_1.main(smoothed=False, stat=rank_by[0])
-            data = rank_1.results
+            data = rank_1.ranked_df
             data.drop(drop_cols, axis=1, inplace=True)
 
         else:
@@ -1316,7 +1317,7 @@ GENERATE BEST-SELLER DATA
 """
 
 def BestSellerData(period_wks, end_date, products=[None], locations=[None],
-                   cities=[None], zipcodes=[None], MA_param=5, NaN_allowance=5,
+                   cities=[None], zipcodes=[None], MA_param=None, NaN_allowance=5,
                    print_rejects=False, compute_on_sales=True, N_periods=10,
                    freq='7D', rank_by='rate'):
     """Return objects for graphing in graph_trends.PlotBestSellers():
@@ -1342,7 +1343,7 @@ def BestSellerData(period_wks, end_date, products=[None], locations=[None],
           or statistical comparison
 
     OPTIONAL:
-     -- MA_param: (int or NoneType, default=5) rolling "boxcar" window, in weeks, by which to
+     -- MA_param: (int or NoneType, default=None) rolling "boxcar" window, in weeks, by which to
           compute moving averages; None: ranks on non-smoothed (raw) trend data
      -- NaN_allowance: (int or float from 0 to 100, default=5) max allowable
           percentage of NaNs in product ts samples for statistical aggregation;
@@ -1365,13 +1366,17 @@ def BestSellerData(period_wks, end_date, products=[None], locations=[None],
           * 'sales' = cumulative sales over period
     """
 
+    # Identify variable and filter for comparison
+    product_place_args = [products, locations, cities, zipcodes]
+    import_type, var_index = select_import_params(product_place_args)
+
     # Generate list of end_dates for multiple ranking periods
     end_dates = generate_dates(end_date, N_periods, freq)
 
     # Generate data consisting of product rankings over multiple periods
     data_A = OrderedDict()
 
-    excess_null_error_msg = ('\nDATA FOR SOME PRODUCTS CONTAINED TOO MANY NULLS TO RANK.\n\n'
+    excess_null_error_msg = ('\nDATA FOR SOME PRODUCTS OR PLACES CONTAINED TOO MANY NULLS TO RANK.\n\n'
           '** For details, re-run function with print_rejects keyword argument'
           ' set to True.\n\n** To ignore null values and proceed with rankings'
           ' (substituting zero for\nnulls in computations),'
@@ -1407,9 +1412,9 @@ def BestSellerData(period_wks, end_date, products=[None], locations=[None],
             psdf, rej = SalesStatsDF(period_wks=period_wks, end_date=end_d,
                     products=products, locations=locations, cities=cities,
                     zipcodes=zipcodes,
-                    NaN_allowance=NaN_allowance, print_rejects=print_rejects,
-                    return_rejects=True, normed=True,
-                    compute_on_sales=compute_on_sales
+                    NaN_allowance=NaN_allowance,
+                    print_rejects=print_rejects, return_rejects=True,
+                    normed=True, compute_on_sales=compute_on_sales
                             )
             if len(rej) > 0:
                 if not print_rejects:
@@ -1423,23 +1428,48 @@ def BestSellerData(period_wks, end_date, products=[None], locations=[None],
             ranked.main(smoothed=True, stat=rank_by)
         else:
             ranked.main(smoothed=False, stat=rank_by)
-        data_A[end_d] = ranked.ranked_IDs
-
-"""STOPPED HERE ON MONDAY 4/16. NEED TO SELECT WHICH VARIABLE TO ITERATE ON."""
-    # Reconfigure data_A into a dictionary (data_B) of keys=products, vals=list
-    # of a product's rankings over the series of comparison periods
-    data_B = OrderedDict()
-    for prod in products:
-        if type(prod) == str:
-            data_B[prod.lower()] = []
+        if import_type == 'C':
+            data_A[end_d] = ranked.ranked_products
         else:
-            data_B[product_name_from_ID(prod)] = []
-    for prod_arr in data_A.itervalues():
-        for i, prod in enumerate(prod_arr):
+            data_A[end_d] = ranked.ranked_places
+
+    # Reconfigure data_A into a dictionary (data_B) of keys=products or places,
+    # values=list of a product/place's rankings over the series of comparison periods
+    data_B = OrderedDict()
+    if import_type == 'C': # variable = products
+        # create dictionary with keys as products and values as empty lists
+        for prod in products:
             if type(prod) == str:
-                data_B[prod.lower()].append(i+1) # i+1 represents product rank
+                data_B[prod.lower()] = []
             else:
-                data_B[product_name_from_ID(prod)].append(i+1)
+                data_B[product_name_from_ID(prod)] = []
+        # append rankings to list-values in dictionary
+        for prod_arr in data_A.itervalues():
+            for i, prod in enumerate(prod_arr):
+                if type(prod) == str:
+                    data_B[prod.lower()].append(i+1) # i+1 represents product rank
+                else:
+                    data_B[product_name_from_ID(prod)].append(i+1)
+
+    if import_type == 'D': # variable = places
+        for place in product_place_args[var_index]:
+            if type(place) == str:
+                data_B[place.lower()] = []
+            else:
+                if var_index == 3: # variable = zipcodes
+                    data_B[string(place)] = []
+                else:
+                    data_B[locations_name_from_ID(place)] = []
+
+        for place_arr in data_A.itervalues():
+            for i, place in enumerate(place_arr):
+                if type(place) == str:
+                    data_B[place.lower()].append(i+1) # i+1 represents product rank
+                else:
+                    if var_index == 3: # variable = zipcodes
+                        data_B[str(place)].append(i+1)
+                    else: # variable is location by ID
+                        data_B[locations_name_from_ID(place)].append(i+1)
 
     # Construct output dataframes
     mask = lambda x: datetime.strptime(x, '%m/%d/%Y')
@@ -1449,7 +1479,12 @@ def BestSellerData(period_wks, end_date, products=[None], locations=[None],
                           period_wks, rank_by, freq)
 
     try: # Exits function if data contains excess null values
-        df_A = pd.DataFrame(data_A, index=range(1, len(products)+1))
+        if import_type == 'C':
+            df_A = pd.DataFrame(data_A, index=range(1, len(products)+1))
+        else:
+            df_A = pd.DataFrame(data_A,
+                      index=range(1, len(product_place_args[var_index])+1)
+                      )
     except ValueError:
         if not print_rejects:
             print(excess_null_error_msg)
@@ -1467,11 +1502,29 @@ def BestSellerData(period_wks, end_date, products=[None], locations=[None],
         df_A.name = title
         BestSellers_df.name = title
 
-        labels = [names_formatted[product_name_from_ID(prod_ID)] \
-                  for prod_ID in df_A.iloc[:,-1]]
+        # Create labeler dict with labels (keys) and positions (vals)
+        if import_type == 'C':
+            labels = [names_formatted[product_name_from_ID(prod_ID)] \
+                      for prod_ID in df_A.iloc[:,-1]]
+            labeler = {}
+            for i, prod in enumerate(labels):
+                labeler[prod] = i + 1
+
+        if import_type == 'D':
+            if var_index == 1 and type(df_A.iloc[:1, -1]) != str:
+                # if variable is location by ID#
+                labels = [locations_name_from_ID(place_ID) \
+                          for place_ID in df_A.iloc[:,-1]]
+            elif var_index == 3: # variable is zipcode
+                labels = [str(place_ID) \
+                          for place_ID in df_A.iloc[:,-1]]
+            else:
+                labels = [place_ID for place_ID in df_A.iloc[:,-1]]
+
+
         labeler = {}
-        for i, prod in enumerate(labels):
-            labeler[prod] = i + 1
+        for i, var in enumerate(labels):
+            labeler[var] = i + 1
 
 
         return BestSellers_df, labeler
