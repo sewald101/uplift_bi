@@ -795,7 +795,7 @@ def PlotFilledTrends(df=None, products=None, period_wks=10, end_date=None,
      -- write_path: (str, default=None) write graph to 'path/file'
     """
     if df is None:
-        df = CompTrendsDF(products, period_wks, end_date=end_date,
+        df = CompTrendsDF(period_wks, end_date, products=products,
                         compute_on_sales=compute_on_sales, MA_param=MA_param,
                          shifted=shifted, normed=normed, baseline=baseline)
 
@@ -1000,26 +1000,30 @@ def PlotBestSellers(df, labeler, N_top=None, footnote_pad=4.5,
             msize = 16 if i < N_top else 8
             label_wgt = 'bold' if i < N_top else 'normal'
             if i == 0:
-                prod_color = 'g'
+                prod_place_color = 'g'
             elif i > 0 and i < N_top:
-                prod_color = colors_top[ci]
+                prod_place_color = colors_top[ci]
             else:
-                prod_color = colors_bottom[ci]
+                prod_place_color = colors_bottom[ci]
         else:
             ci = i % len(palate)
             lw, transp, msize = 1, 1, 14
             label_wgt = 'normal'
-            prod_color = palate[ci]
+            prod_place_color = palate[ci]
 
-        ax.plot(df_revd[col], linewidth=lw, color=prod_color, alpha=transp,
+        ax.plot(df_revd[col], linewidth=lw, color=prod_place_color, alpha=transp,
                 marker='o', markersize=msize, zorder=len(df)-i)
 
         # Product labels
+        labeler_lc = {}
+        for k, v in labeler.iteritems():
+            labeler_lc[k.lower()] = v
+
         ax.text(
                 df.index[-1] + pd.DateOffset(label_offset),
-                -labeler[names_formatted[df.columns[i]]],
-                names_formatted[df.columns[i]],
-                color=prod_color,alpha=transp, va='center', fontsize=16,
+                -labeler_lc[col],
+                col.upper(),
+                color=prod_place_color,alpha=transp, va='center', fontsize=16,
                 fontweight=label_wgt
             )
 

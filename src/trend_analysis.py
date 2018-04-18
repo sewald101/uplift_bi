@@ -1457,7 +1457,7 @@ def BestSellerData(period_wks, end_date, products=[None], locations=[None],
                 data_B[place.lower()] = []
             else:
                 if var_index == 3: # variable = zipcodes
-                    data_B[string(place)] = []
+                    data_B[str(place)] = []
                 else:
                     data_B[locations_name_from_ID(place)] = []
 
@@ -1502,22 +1502,18 @@ def BestSellerData(period_wks, end_date, products=[None], locations=[None],
         df_A.name = title
         BestSellers_df.name = title
 
-        # Create labeler dict with labels (keys) and positions (vals)
+        # Create labeler dict with labels (keys) and their positions (vals)
         if import_type == 'C':
             labels = [names_formatted[product_name_from_ID(prod_ID)] \
                       for prod_ID in df_A.iloc[:,-1]]
-            labeler = {}
-            for i, prod in enumerate(labels):
-                labeler[prod] = i + 1
 
         if import_type == 'D':
-            if var_index == 1 and type(df_A.iloc[:1, -1]) != str:
-                # if variable is location by ID#
+            if var_index == 1 and type(locations[0]) != str:
+                # if variable is location by ID number
                 labels = [locations_name_from_ID(place_ID) \
                           for place_ID in df_A.iloc[:,-1]]
             elif var_index == 3: # variable is zipcode
-                labels = [str(place_ID) \
-                          for place_ID in df_A.iloc[:,-1]]
+                labels = [str(place_ID) for place_ID in df_A.iloc[:,-1]]
             else:
                 labels = [place_ID for place_ID in df_A.iloc[:,-1]]
 
